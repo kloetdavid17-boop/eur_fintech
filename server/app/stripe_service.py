@@ -50,8 +50,8 @@ async def create_checkout_url(user: User) -> str:
         "client_reference_id": str(user.id),
         "metadata": {"user_id": str(user.id)},
         "subscription_data": {"metadata": {"user_id": str(user.id)}},
-        "success_url": f"{settings.frontend_url.rstrip('/')}/dashboard?billing=success",
-        "cancel_url": f"{settings.frontend_url.rstrip('/')}/dashboard?billing=cancelled",
+        "success_url": f"{settings.frontend_origin}/dashboard?billing=success",
+        "cancel_url": f"{settings.frontend_origin}/dashboard?billing=cancel",
     }
     if user.stripe_customer_id:
         params["customer"] = user.stripe_customer_id
@@ -70,7 +70,7 @@ async def create_portal_url(user: User) -> str:
         session = await _client().v1.billing_portal.sessions.create_async(
             params={
                 "customer": user.stripe_customer_id,
-                "return_url": f"{settings.frontend_url.rstrip('/')}/dashboard",
+                "return_url": f"{settings.frontend_origin}/dashboard",
             }
         )
     except stripe.StripeError as exc:

@@ -112,3 +112,16 @@ def clear_auth_cookie(response: Response) -> None:
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+async def get_premium_user(user: CurrentUser) -> User:
+    """Strict dependency for Premium-only routes: 402 on the Free plan."""
+    if user.plan != "PREMIUM":
+        raise HTTPException(
+            status.HTTP_402_PAYMENT_REQUIRED,
+            {"code": "premium_required", "message": "This feature is included in the Premium plan."},
+        )
+    return user
+
+
+PremiumUser = Annotated[User, Depends(get_premium_user)]

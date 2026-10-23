@@ -1,47 +1,43 @@
-# ZZPay API
+# TradeTrack API
 
-FastAPI + SQLModel + PostgreSQL. A flat, easy-to-read backend for the ZZPay receipt MVP.
+FastAPI + SQLModel + PostgreSQL (async). Flat, readable backend for the TradeTrack receipt MVP.
+The API contract is `docs/api.md` (repo root).
 
 ## Run locally
 
 ```bash
-# 1. Start Postgres (from the repo root)
-docker compose up -d
-
-# 2. Set up the environment
+docker compose up -d              # from the repo root: local Postgres
 cd server
-python -m venv .venv
-# Windows: .\.venv\Scripts\Activate.ps1   |   macOS/Linux: source .venv/bin/activate
+python -m venv .venv && source .venv/bin/activate   # Windows: .\.venv\Scripts\Activate.ps1
 pip install -r requirements.txt
-cp .env.example .env          # then edit ZZPAY_JWT_SECRET
-
-# 3. Run the API (tables are created and demo data is seeded on startup)
+cp .env.example .env              # set ZZPAY_JWT_SECRET (and ZZPAY_OPENAI_API_KEY for real extraction)
 python -m uvicorn app.main:app --reload --port 8000
 ```
 
-- API docs (Swagger): http://localhost:8000/docs
-- Health check: http://localhost:8000/api/health
-- A demo account is seeded on first run; the email + password are printed to the console.
+Swagger: http://localhost:8000/docs - health: `/api/health` - what is configured: `/api/config`.
+In development a demo account is seeded: `demo@tradetrack.ca` / `demo1234` (Premium, 3 SAMPLE receipts).
+
+## Tests
+
+```bash
+cd server && pytest -q            # in-memory SQLite, fake AI provider; no network or credentials
+```
 
 ## Layout
 
 ```
 app/
-  main.py        FastAPI app; creates tables + seeds demo data on startup
-  config.py      Settings from environment (.env), ZZPAY_ prefix
-  database.py    Async engine + get_session dependency
-  auth.py        Password hashing, JWT, get_current_user
-  models.py      SQLModel tables (User, Receipt) + request/response schemas
-  pdf.py         Render a receipt to PDF / PNG
-  email.py       Email a receipt (logs instead of sending when SMTP is unset)
-  seed.py        Demo user + sample receipts
-  routers/
-    users.py     register / login / logout / me
-    receipts.py  list / get / create / pdf / png / email
-```
-
-## Tests
-
-```bash
-pytest
+  main.py          app + startup (ensure_schema, optional seed)
+  config.py        ZZPAY_* settings (+ derived "is it configured" flags)
+  plans.py         plan prices/limits/features + Toronto calendar-month period (change plans here)
+  tax.py           province tax reference (hints/warnings only)
+  validation.py    Decimal parsing, PATCH validation, warnings
+  extraction.py    file validation, OpenAI extraction, normalisation
+  pipeline.py      shared intake: validate -> dedupe -> store -> extract (uploads + inbound email)
+  storage.py       original files: database (default) or S3
+  exports.py       CSV/JSON/monthly summary      pdf.py  receipt + summary PDFs
+  email.py         SMTP (email to accountant)    stripe_service.py  Stripe helpers
+  models.py        tt_* tables + schemas         database.py  engine, ensure_schema()
+  routers/         users, receipts, billing, inbound, config
+docs/ (repo root): database.md, canadian-tax-model.md, ai-extraction.md, email-forwarding.md, subscription-model.md
 ```

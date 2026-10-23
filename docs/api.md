@@ -146,3 +146,40 @@ with `source:"EMAIL"`.
 ## Frontend routes
 `/` Landing + capture · `/receipts/:id` Receipt detail · `/dashboard` Account & management
 (auth required). Login / register are modals. `*` → `/`.
+
+## Backend notes / deviations
+
+Implemented in `server/`. Where the contract was ambiguous or deliberately changed:
+
+1. **Delete keeps the usage row.** `DELETE /api/receipts/{id}` removes the receipt and its file but
+   *keeps* its `tt_usage_events` row for the period (contract said it removes it). Otherwise "save,
+   delete, upload again" would give unlimited free receipts. The row goes away only with the account.
+2. **Error bodies.** Invalid field values: `422 {code:"invalid_field", message, field}`. `429` always
+   `{code:"rate_limited", message}`. Archived receipt save: `409 {code:"receipt_archived"}`; reprocess of
+   a saved receipt: `409 {code:"not_reprocessable"}`. Premium routes: `402 {code:"premium_required"}`.
+3. **`quantity`** in line items is a decimal *string* (e.g. `"2"`, `"1.5"`) like all numbers; the PATCH body
+   accepts a number or a string.
+4. **Process outcomes.** A `FAILED` earlier attempt for the same file is retried on the same receipt instead
+   of being reported as a duplicate. With no AI key the response is `503 ai_not_configured` with a
+   `receipt_id`; that receipt is `FAILED` with `extraction_error` explaining it (file kept, editable).
+   A manual `PATCH` of a `FAILED` receipt moves it to `NEEDS_REVIEW`.
+5. **Currency.** If the receipt shows no currency, `currency` is `"CAD"` (the column is not nullable) and an
+   info warning `currency_assumed` says so. If the AI omits `tax_total` but reads tax lines, `tax_total` is
+   the plain sum of those printed lines.
+6. **Summary.** `by_category[].category` is `"Uncategorized"` when empty. Extra field `other_currency_count`:
+   non-CAD receipts are excluded from the CAD totals. Receipts are placed in the month of their receipt
+   date; undated receipts are only counted in `undated_count` (for the month they were saved).
+7. **`POST /api/receipts/export/email`** returns `{sent:true, to, month, receipts}` on success; `502
+   email_send_failed` if SMTP fails. Every failure is non-2xx.
+8. **`DELETE /api/me`** with a wrong password returns `403` (not 401, so the UI does not log out). If a live
+   Stripe subscription cannot be cancelled: `502 subscription_cancel_failed`, account not deleted.
+9. **Inbound email** responses (for Mailgun, not the UI): `403` bad/stale/replayed signature, `406`
+   unknown recipient or non-Premium account (permanent, no retry), `200` with `{status: processed|duplicate|
+   rejected|failed}` otherwise, `503` when not configured.
+10. **Stripe** return URLs are `<frontend origin>/dashboard?billing=success|cancel`; the origin is
+    `ZZPAY_FRONTEND_URL` or the first `ZZPAY_CORS_ORIGINS` entry.
+11. **Cookie** is `SameSite=Lax` by default (as specified). If the frontend and API are on different
+    *sites* (e.g. two `onrender.com` subdomains), browsers will not send it on API calls: serve the API
+    through the frontend origin (proxy/rewrite) or set `ZZPAY_COOKIE_SAMESITE=none`. `Authorization: Bearer`
+    is always accepted.
+12. `GET /api/receipts/{id}/pdf` works for any status (not only SAVED).

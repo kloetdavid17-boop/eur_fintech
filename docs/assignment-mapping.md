@@ -1,38 +1,33 @@
-# Assignment mapping
+# Assignment mapping and honest status
 
-How each Assignment 2 requirement is satisfied, and where to find it.
+How each requirement in the assignment brief is met, and how it was checked. "Tested" means a check
+was actually run; "not run" means the code exists but needs an outside account that was not available.
 
-| Assignment requirement | Where implemented | Explanation |
+| Requirement | Implementation | Status |
 |---|---|---|
-| **Working MVP of the Assignment 1 model** | whole repo | A merchant creates a structured receipt; it is delivered via NFC/online; the customer views/exports/emails/refunds it in a browser. |
-| **Main feature: capture data at the source** | `routers/checkout.py`, `einvoice.py` | A basket is mapped into a typed `Receipt` at checkout — no scanning/OCR. |
-| **Main feature: NFC delivery** | `pages/MerchantCheckout.tsx` | "Generate ZZPay Receipt" → "Simulate customer tap" opens `/receipt/:id`. NFC tap is simulated (documented). |
-| **Main feature: multi-channel** | `pages/OnlineCheckout.tsx`, `docs/multi-channel.md` | The online checkout delivers the *same* receipt object through a link instead of a tile. |
-| **Main feature: no-login receipt access** | `pages/ReceiptView.tsx`, `routers/receipts.py` (public GET) | The public page renders without auth; PDF/PNG download is public. |
-| **Main feature: export PDF/PNG** | `pdf.py`, `ExportButtons.tsx` | Pure-Python rendering (xhtml2pdf + pypdfium2). |
-| **Main feature: export JSON + UBL** | `einvoice.py`, `ubl.py` | Structured JSON twin + EN 16931 core UBL 2.1 (account-gated). |
-| **Main feature: email to self / accountant** | `email.py`, `routers/receipts.py` | Mock email (PDF + UBL); status recorded on the receipt. |
-| **Main feature: returning-user preferences** | `lib/storage-service.ts`, `PreferencesForm.tsx` | `localStorage` remembers details on the device; optional account remembers the accountant + JWT. |
-| **Refunds / returns** | `routers/refunds.py`, `RefundPanel.tsx`, `docs/refund-flow.md` | Linked credit note; original preserved; SENT-warning. |
-| **eInvoice standard (EN 16931)** | `ubl.py`, `docs/einvoice-standard.md` | EN 16931 core UBL with the mandatory business terms; 422 if seller VAT missing. |
-| **Architecture explanation** | `docs/architecture.md`, `README.md §6` | Text diagram + component walkthrough. |
-| **Deployment explanation** | `README.md §4–5` | Local run + deployment notes (env-driven config, health check). |
-| **Investor orientation** | `pages/Landing.tsx`, `README.md` | The landing page and README carry the investor narrative. |
-| **AI coding agents used** | `docs/ai-orchestration.md` | Claude Code (main) + ChatGPT (scoping); human decisions. |
-| **Clean public repo + README** | `README.md`, `docs/` | Concise but complete documentation in the root + `docs/`. |
-| **Agent instruction files** | `CLAUDE.md`, `AGENTS.md`, `.agents/zzpay-mvp-agent.md`, `.claude/` | Guide future agents to keep the scope and invariants. |
-| **Repo description & topic tags** | `README.md` (Suggested GitHub metadata) | Description + topic tags to set on GitHub. |
+| TradeTrack brand, Canadian market, CAD, GST/HST/PST/QST, province-aware, Ontario demo | Whole UI and API; `tax.py` holds a province table used **only** for hints and warnings, never to compute or overwrite amounts | Done; tax warnings tested |
+| Page 1: landing and capture (upload, camera, email explainer, plans, CTAs, labelled sample) | `pages/Landing.tsx`, `UploadZone`, `SampleReceiptDemo`, `PlanCards` | Done; checked in a browser at 390 px and 1280 px |
+| Page 2: receipt detail (fields, line items, taxes, category, confidence/warnings, preview, edit, save, export) | `pages/ReceiptDetail.tsx`, `ReceiptForm` | Done; edit, save and refresh persistence checked in a browser against a real PostgreSQL database |
+| Page 3: dashboard (history, search/filter, usage, plans, forwarding, exports, profile, privacy) | `pages/Dashboard.tsx` and tab components | Done; the receipts list and usage meter were checked in a browser against the real backend, the other tabs only against mocked data |
+| Upload validation, corrupt/unsupported files, duplicates | `extraction.py` (type by file contents), `pipeline.py` (SHA-256 duplicates) | Tested |
+| Real AI extraction (images and PDFs), category suggestion, nothing invented | OpenAI in `extraction.py`; unreadable fields stay `null` | Logic tested with a fake provider. **The live OpenAI call was not run** (needs a key) |
+| AI failure and not-configured handling | `422 extraction_failed` (receipt kept), `503 ai_not_configured` (file kept, manual entry) | Tested, including in a browser |
+| Validation: dates, amounts, totals vs tax vs subtotal | `validation.py`, explicit `Decimal` rounding, 2-cent tolerance | Tested |
+| Email forwarding (secure alias, signature, replay, attachments, dedupe) | `routers/inbound.py`, Mailgun route | Checks tested with locally signed requests. **No real Mailgun delivery was run** |
+| Freemium: Free 5/month, Premium unlimited, server-side, central config | `plans.py`, save-time check | Tested, including 6th save returning `402` against PostgreSQL |
+| Billing: real Stripe when configured, labelled demo otherwise | `routers/billing.py`, `stripe_service.py` | Demo mode tested end to end. **Live Stripe was not run**; webhook signature rejection tested |
+| Exports: PDF, CSV, JSON, monthly summary, email to accountant | `exports.py`, `pdf.py` | CSV/JSON/summary values checked against stored data; PDF checked to be a real PDF. Email tested with a mocked mail server |
+| QuickBooks / Wave / Xero integration | **Not built.** Needs OAuth developer credentials and approval; CSV/JSON/PDF and accountant email are the working hand-off | Documented, not claimed |
+| Ownership and security (owner-only, 404 for others, anonymous 401, rate limits, formula-injection safe) | `routers/receipts.py`, `auth.py`, `ratelimit.py` | Tested, including against PostgreSQL |
+| Schema safety on the existing Neon database | `tt_` tables, `ensure_schema()`; older tables untouched | Tested by starting the app against a PostgreSQL database that already held old-style tables |
+| Private file storage | Database (default) or S3, only via the authenticated endpoint | Database path tested byte-for-byte; S3 tested with a mock only |
 
-## Service-file name mapping (assignment §8 → real files)
+## What was run
 
-The assignment lists frontend-style service names; in this FastAPI + React MVP the logic splits
-across backend Python modules and frontend libs. The mapping:
-
-| Assignment name | Real file(s) | Role |
-|---|---|---|
-| `receipt-service` | `server/app/einvoice.py` + `client/src/api.ts` | create/retrieve receipts |
-| `einvoice-mapper` | `server/app/einvoice.py` | basket/POS → eInvoice receipt object |
-| `export-service` | `server/app/einvoice.py` (JSON) + `server/app/ubl.py` (UBL) + `server/app/pdf.py` (PDF/PNG) + `client/src/lib/download.ts` | export to JSON/UBL/PDF/PNG |
-| `refund-service` | `server/app/routers/refunds.py` + `server/app/einvoice.py` (`credit_from_receipt`) | linked credit notes |
-| `email-service` | `server/app/email.py` | mock/SMTP send with PDF + UBL |
-| `storage-service` | `client/src/lib/storage-service.ts` | browser localStorage preferences |
+- `cd server && pytest -q`: **91 tests passed** (SQLite, fake AI, no network).
+- `cd client && npm run build`: type-check and build pass.
+- A PostgreSQL 16 server with TLS was started locally. The app was started against it (alongside
+  old-style tables), then about 50 HTTP checks and a 9-step browser journey (sign up, upload, complete,
+  save, refresh, dashboard, signed-out access) passed.
+- Not run: Neon itself, real OpenAI, Stripe, Mailgun, S3 and SMTP calls; keyboard and screen-reader use;
+  browsers other than Chromium.

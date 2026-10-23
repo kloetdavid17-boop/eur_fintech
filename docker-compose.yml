@@ -1,4 +1,4 @@
-# Local PostgreSQL for ZZPay development.
+# Local PostgreSQL for TradeTrack development.
 # Start with:  docker compose up -d
 services:
   db:

@@ -1,88 +1,56 @@
 # Architecture
 
-ZZPay is a **receipt infrastructure layer**. A merchant creates a structured receipt at the source;
-the same object is delivered through any channel and consumed by a public browser page that can
-export, email, and refund it. The codebase is intentionally flat and small so it reads top-to-bottom.
-
-## Text diagram
-
 ```
- Merchant Portal                         (client/src/pages/MerchantCheckout.tsx,
-   /merchant · /online-checkout            OnlineCheckout.tsx)
-        │
-        │  POST /api/checkout {merchant_key, channel}
-        ▼
- Receipt Service                          (server/app/routers/checkout.py)
-   · MERCHANTS registry (POS simulation, single source of truth)
-   · einvoice.basket_to_receipt(): VAT split + totals (round per line, then sum)
-        │
-        ▼
- eInvoice-compatible Receipt Object       (server/app/models.py: Receipt)
-   · invoice_id (ZZP-2026-0001), channel, supplier, invoice_lines, totals, status
-   · persisted in PostgreSQL via SQLModel
-        │
-        │  delivery_url = /receipt/{invoice_id}
-        ▼
- NFC URL  /  Online Link                  (NFC tap simulated by a button; online link in webshop)
-        │
-        ▼
- Public Receipt Page                      (client/src/pages/ReceiptView.tsx — NO login)
-   ReceiptDocument + ReceiptActions
-        │
-        ├── Export                        pdf.py (PDF/PNG, public) ·
-        │                                 einvoice.py (JSON) · ubl.py (EN 16931 UBL)  [account]
-        ├── Email                         email.py → self / accountant (PDF + UBL)    [account]
-        └── Refund                        refunds.py → linked CreditNote (original preserved)
+ Browser (React SPA)  ──  /api/*  ──►  FastAPI  ──►  PostgreSQL (Neon)
+   pages: /, /receipts/:id, /dashboard     │  ├─ OpenAI   (read receipts)        optional
+                                           │  ├─ Stripe   (subscriptions)        optional
+ Mailgun route ──► POST /api/inbound/...  ─┤  ├─ SMTP     (email to accountant)  optional
+                                           │  └─ S3 bucket (original files)      optional
 ```
 
-## Components
+One backend service and one static site. The static host forwards `/api/*` to the backend, so the
+browser sees a single origin and the httponly login cookie works without CORS tricks.
 
-### Merchant portal (`/merchant`, `/online-checkout`)
-The "source". Each page shows a demo basket and a single action that POSTs to `/api/checkout`. The
-backend mints a human-readable `invoice_id` and returns the structured receipt plus a `delivery_url`.
-In production this is the merchant's POS; here it is a small hardcoded registry (`MERCHANTS` in
-`routers/checkout.py`), which is also the single source of truth for the seeded demo data.
+## Receipt intake pipeline (`pipeline.py`)
 
-### Receipt service (`einvoice.py` + `models.py`)
-`einvoice.basket_to_receipt()` turns a basket into a fully-computed `Receipt`. VAT-inclusive consumer
-prices are split into net + VAT **per line, rounded, then summed**, so the line amounts reconcile to
-the document totals exactly. `models.py` holds the three tables (`Receipt`, `CreditNote`, `User`) and
-all Pydantic schemas — no Repository/DAO/Domain layers.
+Uploads and forwarded emails use the same path:
 
-### eInvoice-compatible receipt object (`models.Receipt`)
-Keyed by `invoice_id` (also the public URL slug). Flat typed columns for supplier/buyer/totals; only
-`invoice_lines` is JSON. `user_id` is **nullable** — receipts are created ownerless and link to a
-user only when that (logged-in) user exports/emails them.
+1. Validate the file: type is decided from the file's own bytes (not the browser's claim), size limit,
+   not empty, not corrupt.
+2. Hash it (SHA-256). If this user already has the same file, return the existing receipt; the AI is
+   not called again and nothing new is created.
+3. Store the original (database by default, S3 if configured).
+4. Extract with OpenAI (images directly; PDFs via their text layer, else rendered pages). Numbers are
+   parsed as `Decimal`; anything unreadable stays `null`. Failures and timeouts become a `FAILED`
+   receipt with a clear message, never a fake success.
+5. Validate and attach warnings (missing fields, totals that do not add up, tax unusual for the
+   province, low confidence). Warnings never block saving; saving needs only merchant and total.
+6. The user reviews and corrects, then **saves**. Saving checks the plan limit on the server and
+   writes one usage row.
 
-### Public receipt page (`/receipt/:id`)
-The most important screen. `GET /api/receipts/{invoice_id}` is **public** (no auth) and flips status
-`GENERATED → VIEWED`. `ReceiptActions` reflects the two-tier access model via the optional-auth
-context.
+## Data (see [database.md](database.md))
 
-### Export services
-- **`pdf.py`** — Jinja2 HTML → xhtml2pdf (PDF) → pypdfium2/PIL (PNG). Pure-Python, public.
-- **`einvoice.py`** — structured JSON twin of the UBL (account-gated).
-- **`ubl.py`** — EN 16931 core UBL 2.1 invoice + credit note (account-gated; buyer = the user).
+`tt_users`, `tt_receipts`, `tt_receipt_files`, `tt_usage_events`, `tt_inbound_events`,
+`tt_inbound_tokens`. Money is `Numeric(10,2)` and travels as strings in JSON. Every receipt has a
+required owner.
 
-### Refund service (`refunds.py`)
-`POST /api/receipts/{id}/refund` creates a linked `CreditNote` and marks the receipt `REFUNDED`
-without mutating its lines. Credit notes have their own public PDF/PNG and gated JSON/UBL exports.
+## Security model
 
-### Browser preference storage (`lib/storage-service.ts`)
-`localStorage` remembers a returning visitor's name / email / preferred format on this device — the
-"no account required" convenience. The accountant email lives in the **account** (server-side),
-because it drives server-side forwarding.
+- Auth: Argon2 password hashes, JWT in an httponly cookie (`Secure` outside development, SameSite Lax);
+  bearer tokens are also accepted. Login and upload endpoints are rate limited (per process, in memory).
+- Ownership is enforced in the backend on every receipt route, including the file and PDF downloads;
+  another user's receipt returns 404. Files are never public.
+- The plan and usage limit come only from the server; the client cannot set them.
+- Inbound email: Mailgun HMAC signature and timestamp checked, replayed tokens rejected, the account is
+  identified only by the secret recipient alias (never the sender), attachments validated by contents,
+  duplicate messages and files skipped, only a minimal log kept (no bodies or subjects).
+- Stripe webhooks are signature-verified. No card data touches the app.
+- Exports escape spreadsheet formulas; PDFs and pages escape user text.
+- Secrets live only in server environment variables.
 
-## Auth model
+## Known limitations
 
-Auth is **optional and progressive**. `auth.py` exposes `CurrentUser` (strict, 401) for gated
-endpoints and `OptionalUser` (lenient, `None`) so public pages can detect a logged-in account without
-forcing a login. The JWT lives in the httponly `zzpay_token` cookie, so a returning user is
-recognised automatically.
-
-## Data flow summary
-
-1. Merchant POSTs a basket → structured `Receipt` persisted, `delivery_url` returned.
-2. Customer opens `delivery_url` (NFC/online) → public page renders immediately.
-3. Anonymous: download PDF/PNG, request refund. Account: JSON/UBL export, email, send-to-accountant.
-4. Refund → linked `CreditNote`; original receipt preserved + `REFUNDED`.
+- Login and upload rate limits are per process (in memory); a multi-instance deployment would need a
+  shared store. Inbound-email replay tokens are kept in the database, so they already work across instances.
+- No schema migration tool yet: new columns go through `ensure_schema()` (see [database.md](database.md)).
+- Free Render services sleep after idle, so the first request can take about a minute.

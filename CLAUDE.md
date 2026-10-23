@@ -35,8 +35,7 @@ province-aware, with **Ontario** as the default demo jurisdiction.
    accounting-platform integration isn't actually configured and working, say so in the UI/API
    response. Never show a fake "success" or "connected" state for something that didn't run.
 7. **No secrets in the frontend or in git.** All provider keys (AI, email, Stripe, file storage) are
-   server-side env vars (`ZZPAY_*` prefix retained for continuity, or migrate to `TRADETRACK_*` — pick
-   one and be consistent). Never commit `.env`; never return secrets or password hashes in responses.
+   server-side env vars (`ZZPAY_*` prefix kept so the live Render service keeps working). Never commit `.env`; never return secrets or password hashes in responses.
 8. **Don't store payment-card data.** Billing uses a provider (Stripe) token/session flow only.
 
 ## What's retired from the previous (ZZPay) spec
@@ -79,20 +78,20 @@ separate "main pages" for the purposes of the three-page requirement.
 
 | | |
 |---|---|
-| Backend | `server/app/` — `main.py`, `config.py`, `database.py`, `models.py`, `auth.py`, `extraction.py` (AI/OCR call + normalization), `categorize.py`, `pdf.py` (receipt export), `email_inbound.py`, `storage.py` (file storage client), `seed.py`, `routers/`, `templates/` |
-| Frontend | `client/src/` — `api.ts`, `auth.tsx`, `App.tsx`, `components/`, `pages/` (`Landing`, `ReceiptDetail`, `Dashboard`), `lib/` |
-| Tests | `server/tests/` — pytest + httpx against in-memory SQLite |
-| Docs | `docs/` — architecture, assignment-mapping, canadian-tax-model, ai-extraction, email-forwarding, subscription-model |
+| Backend | `server/app/` — `main.py`, `config.py`, `database.py` (`ensure_schema`), `models.py` (`tt_*` tables + schemas), `auth.py`, `plans.py` (plans/limits, change here), `tax.py`, `validation.py`, `extraction.py` (OpenAI), `pipeline.py` (shared intake), `storage.py`, `exports.py`, `pdf.py`, `email.py`, `stripe_service.py`, `ratelimit.py`, `seed.py`, `routers/` (`users`, `receipts`, `billing`, `inbound`, `config`), `templates/` |
+| Frontend | `client/src/` — `api.ts`, `auth.tsx`, `App.tsx`, `pages/` (`Landing`, `ReceiptDetail`, `Dashboard`), `components/`, `hooks/`, `lib/` |
+| Tests | `server/tests/` — pytest + httpx against in-memory SQLite with a fake AI provider |
+| Docs | `docs/api.md` is the API contract (keep it in sync); also `architecture`, `database`, `deployment`, `assignment-mapping`, `canadian-tax-model`, `ai-extraction`, `email-forwarding`, `subscription-model`, `ai-orchestration` |
 
 ## Conventions
 
 - **Backend stays flat.** Tables + Pydantic schemas in `models.py`. No Repository/DAO/Domain layers.
-- **One router per resource** under `routers/` (`receipts`, `users`, `billing`, `email`), mounted in
+- **One router per resource** under `routers/` (`users`, `receipts`, `billing`, `inbound`, `config`), mounted in
   `main.py`. Use `Depends(get_session)`; commit happens in the dependency on success.
 - **Auth:** Argon2 + JWT in the httponly cookie, unchanged pattern. `CurrentUser` (strict) —
   `OptionalUser` is no longer needed anywhere in the receipts flow since nothing is public.
 - **Money:** `Decimal` / `Numeric(10, 2)`; decimals serialized as **strings** in JSON. Timestamps are
-  tz-aware UTC. Human-readable receipt IDs: `TT-{year}-{NNNN}`.
+  tz-aware UTC. New tables carry the `tt_` prefix; never drop or alter the old ZZPay tables. Receipt IDs: `TT-{year}-{6 random uppercase alphanumerics}`.
 - **Rendering stays pure-Python** (xhtml2pdf + pypdfium2) — no native libs.
 - **Frontend:** typed calls in `api.ts`; server state via React Query; `useAuth` is **blocking** for
   the dashboard/receipt-detail routes now (no auth ⇒ redirect to sign in), since nothing is public
@@ -101,14 +100,15 @@ separate "main pages" for the purposes of the three-page requirement.
 
 ## External services (new — document actual configuration status)
 
-- **AI extraction**: provider + model TBD; must be a real server-side call when configured, with
+- **AI extraction**: OpenAI (`ZZPAY_OPENAI_API_KEY`, model `ZZPAY_OPENAI_MODEL`); must be a real server-side call when configured, with
   explicit error/timeout handling. If unconfigured, the API must return a clear "extraction
   unavailable" error, never fake data.
 - **Inbound email**: real provider (e.g. Postmark/Mailgun/SendGrid inbound parse) with webhook
   signature verification; if not configured, the dashboard must say so plainly rather than implying
   it works.
-- **File storage**: receipts (image/PDF) go to an object store, not Postgres; private access only,
-  no public URLs.
+- **File storage**: originals are stored in `tt_receipt_files` by default (documented in
+  `docs/database.md`) or in an S3-compatible bucket when fully configured; private access only through
+  the authenticated `/file` endpoint, no public URLs.
 - **Billing**: Stripe test mode, CAD pricing, webhook-verified subscription status. If not fully wired,
   use a clearly labelled demo upgrade flow — never imply a real charge occurred.
 

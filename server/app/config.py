@@ -22,7 +22,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     token_ttl_hours: int = 24
     # Public URL of the frontend (used for Stripe return URLs). No trailing slash.
-    frontend_url: str = "http://localhost:5173"
+    # If empty, the first entry of ZZPAY_CORS_ORIGINS is used.
+    frontend_url: str = ""
     # Auth cookie SameSite: "lax" (default; frontend and API share a site / are proxied),
     # or "none" if the frontend and API are on different sites (forces Secure).
     cookie_samesite: str = "lax"
@@ -100,6 +101,12 @@ class Settings(BaseSettings):
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
+
+    @property
+    def frontend_origin(self) -> str:
+        """Frontend origin for Stripe return URLs: ZZPAY_FRONTEND_URL, else first CORS origin."""
+        url = self.frontend_url.strip() or (self.cors_origin_list[0] if self.cors_origin_list else "http://localhost:5173")
+        return url.rstrip("/")
 
     @property
     def max_upload_bytes(self) -> int:
