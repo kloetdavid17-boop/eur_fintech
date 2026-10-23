@@ -1,7 +1,7 @@
 """Authentication helpers: password hashing, JWT tokens, and the
 ``get_current_user`` dependency used to protect endpoints.
 
-The token is delivered to the browser as an httponly cookie (``zzpay_token``)
+The token is delivered to the browser as an httponly cookie (``tradetrack_token``)
 so JavaScript can't read it; an ``Authorization: Bearer`` header is also accepted
 for API clients / Swagger.
 """
@@ -11,7 +11,7 @@ from typing import Annotated
 from uuid import UUID
 
 import jwt
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,7 +19,7 @@ from app.config import settings
 from app.database import get_session
 from app.models import User
 
-COOKIE_NAME = "zzpay_token"
+COOKIE_NAME = "tradetrack_token"
 
 _pwd = CryptContext(schemes=["argon2"], deprecated="auto")
 
@@ -72,7 +72,10 @@ async def _user_from_request(request: Request, session: AsyncSession) -> User | 
     payload = _decode_token(token)
     if payload is None or "sub" not in payload:
         return None
-    return await session.get(User, UUID(payload["sub"]))
+    try:
+        return await session.get(User, UUID(str(payload["sub"])))
+    except ValueError:
+        return None
 
 
 async def get_current_user(
@@ -86,27 +89,26 @@ async def get_current_user(
     return user
 
 
-async def get_current_user_optional(
-    request: Request,
-    session: Annotated[AsyncSession, Depends(get_session)],
-) -> User | None:
-    """Lenient dependency: returns the user if logged in, else None.
-
-    Public receipt pages use this to *detect* a logged-in account (to show the
-    e-invoice/email actions and link the receipt) without forcing a login.
-    """
-    return await _user_from_request(request, session)
-
-
-# Cookie attributes are shared by login (set) and logout (clear).
+# Cookie attributes are shared by login/register (set) and logout (clear).
 def cookie_kwargs() -> dict:
+    samesite = settings.cookie_samesite.lower()
+    if samesite not in ("lax", "strict", "none"):
+        samesite = "lax"
     return {
         "httponly": True,
-        "samesite": "lax",
-        "secure": not settings.is_development,  # HTTPS-only outside dev
+        "samesite": samesite,
+        # HTTPS-only outside development (SameSite=None also requires Secure).
+        "secure": (not settings.is_development) or samesite == "none",
         "path": "/",
     }
 
 
+def set_auth_cookie(response: Response, token: str) -> None:
+    response.set_cookie(COOKIE_NAME, token, max_age=settings.token_ttl_hours * 3600, **cookie_kwargs())
+
+
+def clear_auth_cookie(response: Response) -> None:
+    response.delete_cookie(COOKIE_NAME, **cookie_kwargs())
+
+
 CurrentUser = Annotated[User, Depends(get_current_user)]
-OptionalUser = Annotated[User | None, Depends(get_current_user_optional)]

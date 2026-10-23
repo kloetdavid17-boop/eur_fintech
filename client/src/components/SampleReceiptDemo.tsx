@@ -88,7 +88,7 @@ export function SampleReceiptDemo() {
             <PiSparkle className="h-5 w-5 text-brand" aria-hidden="true" />
             What TradeTrack reads
           </p>
-          <dl className="grid grid-cols-[auto,1fr] gap-x-3 gap-y-1.5">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
             <dt className="text-slate-600">Merchant</dt>
             <dd className="font-medium">{SAMPLE.merchant}</dd>
             <dt className="text-slate-600">Date</dt>

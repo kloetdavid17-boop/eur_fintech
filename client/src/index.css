@@ -1,19 +1,27 @@
 @import "tailwindcss";
 
-/* ZZPay brand tokens. Tailwind 4 reads @theme to generate utilities like
-   bg-brand, text-brand, etc. */
+/* TradeTrack brand tokens. Tailwind 4 turns these into utilities (bg-brand, text-ink...). */
 @theme {
-  --color-brand: #0d9488;       /* teal-600 */
-  --color-brand-dark: #0f766e;  /* teal-700 */
-  --color-ink: #1a1a1a;
+  --color-brand: #1d4ed8; /* blue-700, 6.7:1 against white */
+  --color-brand-dark: #1e40af; /* blue-800 */
+  --color-brand-soft: #eff6ff; /* blue-50 */
+  --color-accent: #f59e0b; /* amber-500 */
+  --color-accent-soft: #fffbeb; /* amber-50 */
+  --color-ink: #0f172a; /* slate-900 */
 }
 
 html,
 body,
 #root {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
-  @apply bg-gray-50 text-gray-900 antialiased;
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+/* Visible keyboard focus everywhere. */
+:focus-visible {
+  outline: 2px solid var(--color-brand);
+  outline-offset: 2px;
 }

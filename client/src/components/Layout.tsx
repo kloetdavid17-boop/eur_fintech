@@ -1,68 +1,117 @@
-// App shell: a top bar with the ZZPay logo + public nav, and the routed page
-// below. There is no login wall — the account link simply reflects whether the
-// visitor is currently recognised on this device.
-import { Link, NavLink, Outlet } from "react-router-dom";
-import {
-  PiStorefront,
-  PiGlobeSimple,
-  PiReceipt,
-  PiUserCircle,
-  PiHouse,
-} from "react-icons/pi";
+// App shell: TradeTrack header (hamburger menu on phones), routed page, footer with
+// the not-tax-advice note.
+import { useEffect, useState } from "react";
+import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { PiList, PiX } from "react-icons/pi";
 import { useAuth } from "../auth";
-import logoUrl from "../assets/zzp-logo.svg";
-
-const NAV = [
-  { to: "/", label: "Home", icon: PiHouse, end: true },
-  { to: "/merchant", label: "Merchant", icon: PiStorefront, end: false },
-  { to: "/online-checkout", label: "Online", icon: PiGlobeSimple, end: false },
-  { to: "/merchant/receipts", label: "My receipts", icon: PiReceipt, end: false },
-];
+import { Button } from "./Button";
+import { Logo } from "./Logo";
 
 export function Layout() {
-  const { user } = useAuth();
+  const { user, loading, openAuthModal, logout } = useAuth();
+  const [open, setOpen] = useState(false);
+  const location = useLocation();
+  const navigate = useNavigate();
 
-  const linkClass = ({ isActive }: { isActive: boolean }) =>
-    `inline-flex items-center gap-1.5 rounded-lg px-3 py-1.5 text-sm font-medium ${
-      isActive ? "bg-brand/10 text-brand" : "text-gray-600 hover:text-gray-900"
+  useEffect(() => setOpen(false), [location.pathname, location.search]);
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [location.pathname]);
+
+  const link = ({ isActive }: { isActive: boolean }) =>
+    `rounded-lg px-3 py-2 text-sm font-semibold ${
+      isActive ? "bg-brand-soft text-brand" : "text-slate-700 hover:bg-slate-100"
     }`;
 
+  async function signOut() {
+    await logout();
+    navigate("/", { replace: true });
+  }
+
+  const items = (
+    <>
+      <NavLink to="/" end className={link}>
+        Upload a receipt
+      </NavLink>
+      {user ? (
+        <NavLink to="/dashboard" className={link}>
+          Dashboard
+        </NavLink>
+      ) : null}
+    </>
+  );
+
+  const account = loading ? null : user ? (
+    <>
+      <span className="truncate px-1 text-sm text-slate-700" title={user.email}>
+        {user.first_name}
+      </span>
+      <Button variant="secondary" size="sm" onClick={signOut}>
+        Sign out
+      </Button>
+    </>
+  ) : (
+    <>
+      <Button variant="ghost" size="sm" onClick={() => openAuthModal("login")}>
+        Sign in
+      </Button>
+      <Button size="sm" onClick={() => openAuthModal("register")}>
+        Create account
+      </Button>
+    </>
+  );
+
   return (
-    <div className="min-h-full">
-      <header className="border-b border-gray-200 bg-white">
-        <div className="mx-auto flex max-w-4xl items-center justify-between gap-2 px-4 py-3">
-          <Link
-            to="/"
-            className="flex items-center gap-2 text-xl font-bold tracking-tight text-brand"
-          >
-            {/* translate-y nudges the mark to the wordmark's optical centre (the
-                tall caps sit high in the line box, so a box-centred mark reads high). */}
-            <img src={logoUrl} alt="ZZPay logo" className="h-7 w-7 shrink-0 translate-y-[2px]" />
-            <span>ZZPay</span>
+    <div className="flex min-h-screen flex-col">
+      <a
+        href="#main"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-white focus:px-3 focus:py-2"
+      >
+        Skip to content
+      </a>
+      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white">
+        <div className="mx-auto flex max-w-5xl items-center justify-between gap-3 px-4 py-2.5">
+          <Link to="/" aria-label="TradeTrack home">
+            <Logo />
           </Link>
-          <nav className="flex items-center gap-1 overflow-x-auto">
-            {NAV.map(({ to, label, icon: Icon, end }) => (
-              <NavLink key={to} to={to} end={end} className={linkClass}>
-                <Icon /> <span className="hidden sm:inline">{label}</span>
-              </NavLink>
-            ))}
-            <NavLink to="/account" className={linkClass}>
-              <PiUserCircle />{" "}
-              <span className="hidden sm:inline">
-                {user ? user.first_name : "Account"}
-              </span>
-            </NavLink>
+          <nav aria-label="Main" className="hidden items-center gap-1 md:flex">
+            {items}
           </nav>
+          <div className="hidden items-center gap-2 md:flex">{account}</div>
+          <button
+            type="button"
+            className="rounded-lg p-2 text-slate-800 hover:bg-slate-100 md:hidden"
+            aria-label={open ? "Close menu" : "Open menu"}
+            aria-expanded={open}
+            aria-controls="mobile-menu"
+            onClick={() => setOpen((o) => !o)}
+          >
+            {open ? <PiX className="h-6 w-6" /> : <PiList className="h-6 w-6" />}
+          </button>
         </div>
+        {open ? (
+          <div id="mobile-menu" className="border-t border-slate-200 px-4 pb-4 pt-2 md:hidden">
+            <nav aria-label="Mobile" className="flex flex-col gap-1">
+              {items}
+            </nav>
+            <div className="mt-3 flex items-center gap-2 border-t border-slate-100 pt-3">{account}</div>
+          </div>
+        ) : null}
       </header>
 
-      <main className="mx-auto max-w-4xl px-4 py-6">
+      <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
         <Outlet />
       </main>
 
-      <footer className="mx-auto max-w-4xl px-4 py-8 text-center text-xs text-gray-400">
-        ZZPay MVP — Tap. Done. Booked. · structured receipt data at the source ·
-        EN 16931-compatible
+      <footer className="border-t border-slate-200 bg-white">
+        <div className="mx-auto max-w-5xl px-4 py-6 text-xs text-slate-600">
+          <p className="font-semibold text-slate-800">TradeTrack. Less paperwork. More business.</p>
+          <p className="mt-1">
+            TradeTrack provides suggestions only. Expense categories and tax details are not tax,
+            accounting or legal advice, and nothing here says an expense is deductible or that tax is
+            recoverable. Please check with your accountant.
+          </p>
+        </div>
       </footer>
     </div>
   );

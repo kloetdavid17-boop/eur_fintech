@@ -1,60 +1,77 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-CA">
 <head>
   <meta charset="utf-8" />
   <style>
-    @page { size: 80mm 240mm; margin: 6mm; }
-    body { font-family: "Helvetica", "Arial", sans-serif; color: #1a1a1a; font-size: 12px; }
-    .brand { font-size: 20px; font-weight: 700; color: #0d9488; letter-spacing: -0.5px; }
+    @page { size: letter; margin: 18mm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11px; }
+    .brand { font-size: 20px; font-weight: bold; color: #0f766e; }
     .muted { color: #6b7280; }
-    .badge { display: inline-block; font-size: 10px; font-weight: 600; color: #0f766e;
-             border: 1px solid #99f6e4; background: #f0fdfa; border-radius: 10px; padding: 1px 7px; }
-    .doc { margin-top: 10px; font-size: 15px; font-weight: 600; }
-    hr { border: none; border-top: 1px dashed #d1d5db; margin: 10px 0; }
+    h1 { font-size: 17px; margin: 14px 0 2px 0; }
     table { width: 100%; border-collapse: collapse; }
-    td { padding: 2px 0; vertical-align: top; }
-    td.r { text-align: right; white-space: nowrap; }
-    .totals td { padding: 3px 0; }
-    .grand { font-size: 14px; font-weight: 700; }
-    .footer { margin-top: 14px; text-align: center; }
+    th { text-align: left; font-size: 10px; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 3px 0; }
+    td { padding: 3px 0; vertical-align: top; }
+    td.r, th.r { text-align: right; }
+    .box { border: 1px solid #d1d5db; padding: 8px; margin-top: 10px; }
+    .grand td { font-size: 13px; font-weight: bold; border-top: 1px solid #1a1a1a; padding-top: 5px; }
+    .warn { color: #92400e; }
+    .small { font-size: 9px; }
   </style>
 </head>
 <body>
-  <div class="brand">ZZPay</div>
-  <div class="muted">Digital receipt &middot; structured at the source</div>
+  <div class="brand">TradeTrack</div>
+  <div class="muted">Receipt record &middot; {{ receipt_id }}</div>
 
-  <div class="doc">{{ supplier_name }}</div>
-  {% if supplier_vat %}<div class="muted">VAT: {{ supplier_vat }}</div>{% endif %}
-  <div class="muted">{{ supplier_address }}</div>
-  <div class="muted">{{ issue_date }} {{ issue_time }}</div>
-  <div style="margin-top:6px"><span class="badge">{{ channel_label }}</span></div>
+  <h1>{{ merchant if merchant else "Merchant not available" }}</h1>
+  <div class="muted">
+    {{ receipt_date if receipt_date else "Date not available" }}{% if receipt_time %} {{ receipt_time }}{% endif %}
+    {% if receipt_number %} &middot; Receipt no. {{ receipt_number }}{% endif %}
+    {% if province %} &middot; {{ province }}{% endif %}
+  </div>
+  <div class="muted">Status: {{ status }} &middot; Source: {{ source }}{% if is_sample %} &middot; SAMPLE DATA (not a real purchase){% endif %}</div>
 
-  <hr />
+  <div class="box">
+    <b>Category:</b>
+    {% if category %}{{ category }} <span class="muted">({{ "AI suggestion, not yet confirmed by you" if ai_suggested else "chosen by you" }})</span>{% else %}Not available{% endif %}
+  </div>
 
-  <table>
-    {% for item in line_items %}
+  {% if line_items %}
+  <table style="margin-top:10px">
+    <tr><th>Item</th><th class="r">Qty</th><th class="r">Unit price</th><th class="r">Amount</th></tr>
+    {% for li in line_items %}
     <tr>
-      <td>
-        {{ item.quantity }}&times; {{ item.description }}<br />
-        <span class="muted">incl. {{ "%.0f"|format(item.vat_rate|float * 100) }}% VAT</span>
-      </td>
-      <td class="r">{{ currency }} {{ "%.2f"|format(item.line_extension_amount|float + item.line_tax_total|float) }}</td>
+      <td>{{ li.description }}</td>
+      <td class="r">{{ li.quantity if li.quantity else "" }}</td>
+      <td class="r">{{ li.unit_price if li.unit_price else "" }}</td>
+      <td class="r">{{ li.amount if li.amount else "n/a" }}</td>
     </tr>
     {% endfor %}
   </table>
+  {% endif %}
 
-  <hr />
-
-  <table class="totals">
-    <tr><td class="muted">Subtotal (excl. VAT)</td><td class="r">{{ currency }} {{ "%.2f"|format(line_extension_amount|float) }}</td></tr>
-    <tr><td class="muted">VAT</td><td class="r">{{ currency }} {{ "%.2f"|format(tax_total|float) }}</td></tr>
-    <tr class="grand"><td>Total</td><td class="r">{{ currency }} {{ "%.2f"|format(payable_amount|float) }}</td></tr>
+  <table style="margin-top:10px; width: 55%; margin-left: 45%;">
+    <tr><td class="muted">Subtotal</td><td class="r">{{ currency }} {{ subtotal if subtotal else "n/a" }}</td></tr>
+    {% if discounts %}<tr><td class="muted">Discounts</td><td class="r">{{ currency }} {{ discounts }}</td></tr>{% endif %}
+    {% for t in tax_lines %}
+    <tr><td class="muted">{{ t.label }}</td><td class="r">{{ currency }} {{ t.amount }}</td></tr>
+    {% endfor %}
+    {% if not tax_lines %}<tr><td class="muted">Tax</td><td class="r">{{ currency + " " + tax_total if tax_total else "n/a" }}</td></tr>{% endif %}
+    <tr class="grand"><td>Total</td><td class="r">{{ currency }} {{ total if total else "n/a" }}</td></tr>
   </table>
 
-  <div class="footer muted">
-    Receipt {{ invoice_id }} &middot; status: {{ status }}<br />
-    {% if credit_note_id %}Linked credit note: {{ credit_note_id }}<br />{% endif %}
-    EN 16931-compatible structured receipt &middot; keep for your bookkeeping
+  {% if warnings %}
+  <div class="box warn">
+    <b>Items to double-check</b>
+    {% for w in warnings %}<div>&bull; {{ w.message }}</div>{% endfor %}
   </div>
+  {% endif %}
+
+  {% if notes %}<div class="box"><b>Your note:</b> {{ notes }}</div>{% endif %}
+
+  <p class="muted small" style="margin-top:18px">
+    Details were read from the uploaded receipt by an AI service and may contain errors unless you have reviewed them.
+    Tax amounts are shown as printed on the receipt. TradeTrack does not provide tax advice: whether an expense is
+    deductible or tax is recoverable is for you and your accountant to decide.
+  </p>
 </body>
 </html>

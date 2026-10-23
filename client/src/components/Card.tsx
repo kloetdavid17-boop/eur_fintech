@@ -1,9 +1,15 @@
 import type { ReactNode } from "react";
 
-export function Card({ children, className = "" }: { children: ReactNode; className?: string }) {
+export function Card({
+  children,
+  className = "",
+  as: Tag = "div",
+}: {
+  children: ReactNode;
+  className?: string;
+  as?: "div" | "article" | "section";
+}) {
   return (
-    <div className={`rounded-xl border border-gray-200 bg-white shadow-sm ${className}`}>
-      {children}
-    </div>
+    <Tag className={`rounded-xl border border-slate-200 bg-white shadow-sm ${className}`}>{children}</Tag>
   );
 }

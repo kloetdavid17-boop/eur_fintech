@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html lang="en-CA">
+<head>
+  <meta charset="utf-8" />
+  <style>
+    @page { size: letter; margin: 18mm; }
+    body { font-family: Helvetica, Arial, sans-serif; color: #1a1a1a; font-size: 11px; }
+    .brand { font-size: 20px; font-weight: bold; color: #0f766e; }
+    .muted { color: #6b7280; }
+    h1 { font-size: 17px; margin: 14px 0 2px 0; }
+    h2 { font-size: 13px; margin: 16px 0 4px 0; }
+    table { width: 100%; border-collapse: collapse; }
+    th { text-align: left; font-size: 10px; color: #6b7280; border-bottom: 1px solid #d1d5db; padding: 3px 0; }
+    td { padding: 3px 0; vertical-align: top; }
+    td.r, th.r { text-align: right; }
+    .tot td { font-weight: bold; border-top: 1px solid #1a1a1a; }
+    .small { font-size: 9px; }
+  </style>
+</head>
+<body>
+  <div class="brand">TradeTrack</div>
+  <div class="muted">Monthly expense summary</div>
+  <h1>{{ month_label }}</h1>
+  <div class="muted">{{ business }} &middot; {{ summary.count }} saved receipt{{ "" if summary.count == 1 else "s" }} &middot; amounts in {{ summary.currency }}</div>
+
+  <h2>By category</h2>
+  <table>
+    <tr><th>Category</th><th class="r">Receipts</th><th class="r">Subtotal</th><th class="r">Tax</th><th class="r">Total</th></tr>
+    {% for c in summary.by_category %}
+    <tr><td>{{ c.category }}</td><td class="r">{{ c.count }}</td><td class="r">{{ c.subtotal }}</td><td class="r">{{ c.tax_total }}</td><td class="r">{{ c.total }}</td></tr>
+    {% endfor %}
+    {% if not summary.by_category %}<tr><td colspan="5" class="muted">No saved receipts dated in this month.</td></tr>{% endif %}
+    <tr class="tot"><td>Total</td><td class="r">{{ summary.count }}</td><td class="r">{{ summary.subtotal }}</td><td class="r">{{ summary.tax_total }}</td><td class="r">{{ summary.total }}</td></tr>
+  </table>
+
+  <h2>Tax shown on receipts, by type</h2>
+  <table>
+    {% for t, amount in summary.by_tax_type.items() %}
+    <tr><td>{{ t }}</td><td class="r">{{ amount }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <h2>Receipts</h2>
+  <table>
+    <tr><th>Date</th><th>Merchant</th><th>Category</th><th class="r">Tax</th><th class="r">Total</th></tr>
+    {% for r in receipts %}
+    <tr><td>{{ r.date }}</td><td>{{ r.merchant }}</td><td>{{ r.category }}</td><td class="r">{{ r.tax_total }}</td><td class="r">{{ r.total }}</td></tr>
+    {% endfor %}
+  </table>
+
+  <p class="muted small" style="margin-top:14px">
+    {% if summary.flagged_count %}{{ summary.flagged_count }} receipt(s) have items flagged for double-checking.<br />{% endif %}
+    {% if summary.undated_count %}{{ summary.undated_count }} receipt(s) saved this month have no date and are not included above.<br />{% endif %}
+    {% if summary.other_currency_count %}{{ summary.other_currency_count }} receipt(s) in other currencies are not included in the CAD totals.<br />{% endif %}
+    Subtotal and tax are added up only where they were available on a receipt. Categories may be AI suggestions.
+    TradeTrack does not provide tax advice: whether an expense is deductible or tax is recoverable is for you and your
+    accountant to decide.
+  </p>
+</body>
+</html>
