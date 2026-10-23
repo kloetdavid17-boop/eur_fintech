@@ -15,6 +15,7 @@ from app.config import settings
 
 engine = create_async_engine(
     settings.database_url,
+    connect_args={"ssl": "require"} if settings.postgres_url else {},  # hosted Postgres needs TLS
     echo=False,
     pool_pre_ping=True,  # drop dead connections instead of erroring on first use
 )
