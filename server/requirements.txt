@@ -1,11 +1,16 @@
-# ZZPay API — Python 3.12
+# TradeTrack API — Python 3.12
 # Web framework + ASGI server (the [standard] extra pulls in uvicorn)
 fastapi[standard]>=0.115,<1.0
 
 # ORM (SQLModel = SQLAlchemy + Pydantic) and async Postgres driver
 sqlmodel>=0.0.22,<0.1
 asyncpg>=0.30,<1.0
+# AI extraction (AsyncOpenAI)
 openai>=1.50.0
+
+# Billing (Stripe Checkout + webhooks) and optional S3-compatible file storage
+stripe>=10.0,<16.0
+boto3>=1.34,<2.0
 
 greenlet>=3.0.0
 
