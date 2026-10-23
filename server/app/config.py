@@ -20,7 +20,8 @@ class Settings(BaseSettings):
     jwt_secret: str = ""
     jwt_algorithm: str = "HS256"
     token_ttl_hours: int = 24
-
+    openai_api_key: str = ""
+    
     # Database. ZZPAY_POSTGRES_URL (a full URL, e.g. from Neon) wins over the fields below.
     postgres_url: str = ""
     postgres_host: str = "localhost"
