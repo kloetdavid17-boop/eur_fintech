@@ -1,66 +1,133 @@
-# CLAUDE.md — ZZPay MVP ("Tap. Done. Booked.")
+# CLAUDE.md — TradeTrack MVP ("Less paperwork. More business.")
 
-A **receipt infrastructure** MVP for FinTech Assignment 2. A merchant turns a checkout into a
-structured, **EN 16931-compatible** receipt; it's delivered over **NFC or an online link**; the
-customer opens it **in a plain browser with no login** and can export, email, or refund it. Refunds
-are **linked credit notes**. Keep it **flat, small, and demo-ready** — this is a graded MVP, not an
-enterprise app.
+A **receipt and expense-management** MVP for a Canadian Online Retailing assignment. A self-employed
+person or small business uploads a receipt (image/PDF) or forwards one by email; AI extracts the
+transaction data and suggests an expense category; the user reviews, corrects, and saves it to their
+private account; the account dashboard tracks usage against a free/premium plan. Keep it **flat,
+small, and demo-ready** — this is a graded MVP, not an enterprise app.
 
 Stack: FastAPI + SQLModel + PostgreSQL (async) backend; React 19 + Vite + Tailwind + React Query
-frontend. UI copy is **English**; receipt *data* is naturally Dutch (Bouwmaat, Schroeven, BTW).
+frontend. UI copy is **Canadian English**. Currency is **CAD**. Tax terminology is **GST/HST/PST/QST**,
+province-aware, with **Ontario** as the default demo jurisdiction.
+
+> This file supersedes the previous ZZPay/EN16931 invoicing spec. That product (public receipts,
+> checkout, refunds as linked credit notes, UBL e-invoicing) is retired. Infrastructure (deploy, DB,
+> auth pattern, PDF rendering) is preserved; the domain model and the three pages are new.
 
 ## Invariants — do not break these
 
-1. **Public, no-login receipts.** `GET /api/receipts/{invoice_id}` and the **PDF/PNG** downloads are
-   public. Never gate viewing/PDF/PNG behind auth.
-2. **Two-tier access.** Structured export (**JSON/UBL**), **email to self**, and **send to
-   accountant** require the optional account (`CurrentUser`). A compliant EN 16931 UBL needs a buyer
-   identity — that's the reason for the gate. Anonymous users get PDF/PNG + refund only.
-3. **EN 16931 data model.** Receipts/credit notes are EN 16931 / UBL-shaped. UBL is **core**
-   (`urn:cen.eu:en16931:2017`); a missing seller VAT must raise `UblComplianceError` → HTTP 422, not
-   an invalid document. Keep VAT rounding **per line, then sum** so lines reconcile to totals.
-4. **Refund = linked credit note.** Never delete or edit the original receipt on refund. Create a
-   `CreditNote` referencing it (UBL `BillingReference`) and set the receipt `REFUNDED`.
-5. **`user_id` is nullable.** Receipts are created ownerless at checkout and link to a user only when
-   that logged-in user exports/emails them.
+1. **Receipts are private, owner-only.** There is no public, no-login receipt view. Every receipt
+   read/write endpoint requires `CurrentUser` and must filter by `owner_id`. Never trust a client-
+   supplied user/account ID — always derive ownership from the authenticated session.
+2. **No invented data.** AI extraction must only populate fields it actually read from the document.
+   Missing/unreadable fields are marked `unavailable` or left for manual entry — never guessed,
+   never defaulted to plausible-looking values (no fake merchant names, dates, or totals).
+3. **Suggestions, not advice.** Expense category, tax classification, and deductibility are always
+   presented as AI *suggestions* the user can override. Never state or imply a receipt's tax is
+   recoverable or that an expense is deductible — that determination is the user's/their accountant's.
+4. **Province-aware tax, not a universal rate.** Tax fields (GST, HST, PST, QST) are stored per
+   receipt as extracted, not computed from a single hardcoded rate. Ontario (HST 13%) is the default
+   seed/demo scenario; the schema must not assume every business or every province works the same way.
+5. **Server-enforced usage limits.** Free-plan monthly receipt allowance (default 5/month) is checked
+   and enforced in the backend on save, based on successfully *saved* receipts in the current billing
+   period — never on the client, never counting failed uploads or duplicates.
+6. **No fabricated integrations.** If an AI/OCR provider, inbound-email provider, payment provider, or
+   accounting-platform integration isn't actually configured and working, say so in the UI/API
+   response. Never show a fake "success" or "connected" state for something that didn't run.
+7. **No secrets in the frontend or in git.** All provider keys (AI, email, Stripe, file storage) are
+   server-side env vars (`ZZPAY_*` prefix retained for continuity, or migrate to `TRADETRACK_*` — pick
+   one and be consistent). Never commit `.env`; never return secrets or password hashes in responses.
+8. **Don't store payment-card data.** Billing uses a provider (Stripe) token/session flow only.
+
+## What's retired from the previous (ZZPay) spec
+
+- Public, no-login receipt/PDF/PNG access — **removed**; everything is behind auth now.
+- Checkout flow, merchant/customer roles — **removed**; there is one role: the account owner uploading
+  their own expense receipts.
+- Refund as a linked `CreditNote` — **removed**; no sales exist to refund. (Receipts may be edited,
+  archived, or deleted by their owner instead — see Page 3.)
+- EN 16931 / UBL e-invoice compliance (`ubl.py`, `einvoice.py`, `UblComplianceError`) — **removed**;
+  not applicable to expense tracking. Replace with Canadian tax-field validation instead.
+- `user_id` nullable on `Receipt` — **removed**; every receipt has a required, server-set owner.
+
+## Product pages (three, per assignment requirement)
+
+1. **Landing + receipt capture** — brand/value prop, upload area (image/PDF, camera capture on
+   mobile), email-forwarding explainer, plan overview, CTAs to process a receipt / sign up / sign in.
+2. **Receipt detail + results** — extracted fields, line items, subtotal/tax/total, category
+   suggestion, confidence/warnings, file preview, edit-and-confirm, save, export, back to dashboard.
+3. **Account dashboard** — auth, profile, receipt history with search/filter, usage-vs-plan counter,
+   upgrade flow, email-forwarding setup/instructions, exports, archive/delete, privacy settings.
+
+Login, registration, and subscription upgrade can be modals/overlays or sub-routes — they are not
+separate "main pages" for the purposes of the three-page requirement.
+
+## Data model (replaces `User` / `Receipt` / `CreditNote`)
+
+- **User** — keep auth fields (Argon2 hash, email). Add: business name (optional), default province,
+  plan (`free` / `premium`), billing period anchor, forwarding-alias identifier.
+- **Receipt** — owner_id (required FK), source (`upload` / `email`), file reference (storage key, not
+  raw bytes in Postgres), status (`processing` / `needs_review` / `saved` / `failed`), merchant, date,
+  currency, receipt_number, line items (JSON or child table), subtotal, discounts, tax lines (type +
+  amount, e.g. `HST 13%`), total, category (AI-suggested + user-confirmed), confidence/warning flags,
+  created/updated timestamps.
+- **UsageCounter** (or computed) — receipts saved per user per billing month, for free-plan enforcement.
+- Drop `CreditNote` entirely. Province/tax-rate reference data can be a small static table or config,
+  not hardcoded into business logic, so more provinces can be added later.
 
 ## Layout
 
 | | |
 |---|---|
-| Backend | `server/app/` — `main.py`, `config.py`, `database.py`, `models.py`, `auth.py`, `einvoice.py`, `ubl.py`, `pdf.py`, `email.py`, `seed.py`, `routers/`, `templates/` |
-| Frontend | `client/src/` — `api.ts`, `auth.tsx`, `App.tsx`, `components/`, `pages/`, `lib/` |
+| Backend | `server/app/` — `main.py`, `config.py`, `database.py`, `models.py`, `auth.py`, `extraction.py` (AI/OCR call + normalization), `categorize.py`, `pdf.py` (receipt export), `email_inbound.py`, `storage.py` (file storage client), `seed.py`, `routers/`, `templates/` |
+| Frontend | `client/src/` — `api.ts`, `auth.tsx`, `App.tsx`, `components/`, `pages/` (`Landing`, `ReceiptDetail`, `Dashboard`), `lib/` |
 | Tests | `server/tests/` — pytest + httpx against in-memory SQLite |
-| Docs | `docs/` — architecture, assignment-mapping, einvoice-standard, refund-flow, multi-channel, merchant-adoption-and-support, ai-orchestration |
+| Docs | `docs/` — architecture, assignment-mapping, canadian-tax-model, ai-extraction, email-forwarding, subscription-model |
 
 ## Conventions
 
-- **Backend is flat.** Three tables (`User`, `Receipt`, `CreditNote`) live in `models.py` with their
-  Pydantic schemas. No Repository/DAO/Domain layers.
-- **One router per resource** under `routers/` (`checkout`, `receipts`, `refunds`, `users`), mounted
-  in `main.py`. Use `Depends(get_session)`; commit happens in the dependency on success.
-- **Auth:** Argon2 + JWT in the httponly `zzpay_token` cookie. `CurrentUser` (strict) / `OptionalUser`
-  (lenient) from `auth.py`. Config via `ZZPAY_*` env vars; never hardcode secrets.
+- **Backend stays flat.** Tables + Pydantic schemas in `models.py`. No Repository/DAO/Domain layers.
+- **One router per resource** under `routers/` (`receipts`, `users`, `billing`, `email`), mounted in
+  `main.py`. Use `Depends(get_session)`; commit happens in the dependency on success.
+- **Auth:** Argon2 + JWT in the httponly cookie, unchanged pattern. `CurrentUser` (strict) —
+  `OptionalUser` is no longer needed anywhere in the receipts flow since nothing is public.
 - **Money:** `Decimal` / `Numeric(10, 2)`; decimals serialized as **strings** in JSON. Timestamps are
-  tz-aware UTC. Human-readable IDs: `ZZP-{year}-{NNNN}`, `CN-{year}-{NNNN}`.
-- **Rendering is pure-Python** (xhtml2pdf + pypdfium2) — no native libs. Don't reintroduce WeasyPrint.
-- **Frontend:** typed calls in `api.ts`; server state via React Query; `useAuth` is **non-blocking**
-  (401 ⇒ anonymous, no redirect). Downloads via `lib/download.ts` (fetch+blob). Icons from
-  `react-icons/pi`. Reusable UI in `components/`; pages in `pages/`.
+  tz-aware UTC. Human-readable receipt IDs: `TT-{year}-{NNNN}`.
+- **Rendering stays pure-Python** (xhtml2pdf + pypdfium2) — no native libs.
+- **Frontend:** typed calls in `api.ts`; server state via React Query; `useAuth` is **blocking** for
+  the dashboard/receipt-detail routes now (no auth ⇒ redirect to sign in), since nothing is public
+  anymore. Downloads via `lib/download.ts` (fetch+blob). Icons from `react-icons/pi`. Reusable UI in
+  `components/`; pages in `pages/`.
+
+## External services (new — document actual configuration status)
+
+- **AI extraction**: provider + model TBD; must be a real server-side call when configured, with
+  explicit error/timeout handling. If unconfigured, the API must return a clear "extraction
+  unavailable" error, never fake data.
+- **Inbound email**: real provider (e.g. Postmark/Mailgun/SendGrid inbound parse) with webhook
+  signature verification; if not configured, the dashboard must say so plainly rather than implying
+  it works.
+- **File storage**: receipts (image/PDF) go to an object store, not Postgres; private access only,
+  no public URLs.
+- **Billing**: Stripe test mode, CAD pricing, webhook-verified subscription status. If not fully wired,
+  use a clearly labelled demo upgrade flow — never imply a real charge occurred.
+
+All credentials are env vars, documented in `docs/`, never hardcoded or committed.
 
 ## Running
 
-- DB: `docker compose up -d` (Postgres on 5434). Reset schema with `docker compose down -v && up -d`.
+- DB: `docker compose up -d` (Postgres locally). Reset schema with `docker compose down -v && up -d`.
 - Backend: `cd server && uvicorn app.main:app --reload --port 8000` (creates tables + seeds on start).
 - Frontend: `cd client && npm run dev`.
 - Tests: `cd server && pytest`.
 
 ## Don't
 
-- Don't gate receipt viewing / PDF / PNG behind login.
-- Don't make refunds mutate or delete the original receipt.
-- Don't downgrade the UBL below EN 16931 core, or emit an invalid e-invoice instead of a 422.
-- Don't add real external integrations (NFC hardware, POS, Peppol Access Point, bookkeeping APIs)
-  unless explicitly asked — they're documented as deferred.
-- Don't return `password_hash` in any response. Don't hardcode secrets.
+- Don't make any receipt or its file publicly viewable without auth.
+- Don't fabricate AI extraction results, merchant names, line items, or totals.
+- Don't apply a single hardcoded tax rate to every transaction regardless of province.
+- Don't state or imply an expense is tax-deductible or that tax is recoverable.
+- Don't enforce plan limits only on the client.
+- Don't claim an AI, email, storage, or billing integration works when it isn't actually configured.
+- Don't return `password_hash` (or any secret) in any response. Don't hardcode secrets.
 - When you change a feature, **update the README and the relevant `docs/` file** in the same change.
