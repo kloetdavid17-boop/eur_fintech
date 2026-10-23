@@ -1,19 +1,26 @@
 """Database tables (SQLModel) and the request/response schemas (Pydantic).
 
-The data model is the heart of ZZPay's conceptual innovation: a checkout basket
-is turned into a clean, structured, **EN 16931 / UBL-inspired** receipt object at
-the source — no scanning, no OCR. Three entities:
+TradeTrack is a private, owner-only receipt/expense tracker for Canadian
+self-employed people and small businesses. Three entities:
 
-* ``User``       — an *optional* account that stores the accountant email and lets
-                   a returning ZZP'er be remembered (JWT). Receipts are public and
-                   only *link* to a user once that user acts on them.
-* ``Receipt``    — the structured e-invoice. Created by a merchant at checkout,
-                   keyed by a human-readable ``invoice_id`` (e.g. ``ZZP-2026-0001``).
-* ``CreditNote`` — a *linked* correction document for refunds/returns. The original
-                   receipt is never deleted or mutated — auditability by design.
+* ``User``    — an account (required for anything persistent). Holds plan/
+                billing status, province (for tax defaults), and the unique
+                email-forwarding alias.
+* ``Receipt`` — an uploaded or emailed receipt, run through AI extraction,
+                reviewed/corrected by the owner, then saved. ALWAYS owned
+                (``user_id`` is NOT nullable) — there is no public, anonymous
+                receipt concept in TradeTrack.
+* ``UsageEvent`` — one row per successfully *saved* receipt, used to enforce
+                the free-plan monthly limit server-side. (A receipt that fails
+                processing or is never saved must not count against the quota.)
 
-Money uses ``Decimal``/``Numeric(10, 2)``; in JSON we serialise decimals as strings
-to avoid binary-float drift. Timestamps are timezone-aware UTC.
+Money uses ``Decimal``/``Numeric(10, 2)``; in JSON we serialise decimals as
+strings to avoid binary-float drift. Timestamps are timezone-aware UTC.
+
+IMPORTANT — AI output is never authoritative. ``extraction_confidence`` and
+``processing_status`` exist so the UI can visibly flag anything the user
+should double-check. Nothing here should be presented as verified fact until
+the user has reviewed it (``reviewed_at`` is set when they confirm/save).
 """
 
 from datetime import datetime, timezone
@@ -34,33 +41,70 @@ def _utcnow() -> datetime:
 # --------------------------------------------------------------------------- #
 # Enums
 # --------------------------------------------------------------------------- #
-class Channel(str, Enum):
-    """Delivery channel. NFC is *one* channel; the receipt object is identical
-    regardless of how it reaches the customer (multi-channel infrastructure)."""
-
-    NFC = "NFC"
-    ONLINE_LINK = "ONLINE_LINK"
+class Plan(str, Enum):
+    FREE = "FREE"
+    PREMIUM = "PREMIUM"
 
 
-class ReceiptStatus(str, Enum):
-    GENERATED = "GENERATED"  # just created at checkout
-    VIEWED = "VIEWED"        # customer opened the public page
-    SENT = "SENT"            # emailed to the user and/or accountant
-    REFUNDED = "REFUNDED"    # a linked credit note exists
+class ReceiptSource(str, Enum):
+    UPLOAD = "UPLOAD"   # user selected a file / took a photo
+    EMAIL = "EMAIL"      # arrived via the forwarding alias
 
 
-class CreditNoteStatus(str, Enum):
-    GENERATED = "GENERATED"
-    SENT = "SENT"
+class ProcessingStatus(str, Enum):
+    PENDING = "PENDING"           # queued / in flight
+    NEEDS_REVIEW = "NEEDS_REVIEW"  # AI returned a result; user hasn't confirmed yet
+    SAVED = "SAVED"                # user reviewed and saved — counts against quota
+    FAILED = "FAILED"              # AI/service error; does not count against quota
+    ARCHIVED = "ARCHIVED"          # soft-deleted/archived by the user
+
+
+class ExtractionConfidence(str, Enum):
+    HIGH = "HIGH"
+    MEDIUM = "MEDIUM"
+    LOW = "LOW"
+    UNKNOWN = "UNKNOWN"  # e.g. AI service unavailable, manual entry only
+
+
+# Canadian provinces/territories — used for tax defaults, not enforced strictly
+# (a business may have receipts from multiple provinces).
+class Province(str, Enum):
+    ON = "ON"
+    QC = "QC"
+    BC = "BC"
+    AB = "AB"
+    MB = "MB"
+    SK = "SK"
+    NS = "NS"
+    NB = "NB"
+    PE = "PE"
+    NL = "NL"
+    YT = "YT"
+    NT = "NT"
+    NU = "NU"
+
+
+EXPENSE_CATEGORIES = [
+    "Tools and equipment",
+    "Building materials and supplies",
+    "Vehicle expenses and fuel",
+    "Repairs and maintenance",
+    "Office supplies",
+    "Software and subscriptions",
+    "Telecommunications",
+    "Travel and accommodation",
+    "Meals and entertainment",
+    "Professional services",
+    "Other business expenses",
+]
 
 
 # --------------------------------------------------------------------------- #
 # Tables
 # --------------------------------------------------------------------------- #
 class User(SQLModel, table=True):
-    """Optional account. Its job is to remember the accountant email and to let a
-    returning user be recognised (JWT cookie). Receipts are NOT owned through it —
-    a receipt only links to a user once that user exports/emails it."""
+    """An account. Required for any persisted receipt — TradeTrack has no
+    anonymous/public receipt concept."""
 
     __tablename__ = "users"
 
@@ -69,19 +113,23 @@ class User(SQLModel, table=True):
     first_name: str
     last_name: str
     password_hash: str
-    # Where receipts should be forwarded. Configured on the account page.
+
+    # Business profile
+    business_name: str | None = Field(default=None)
+    province: str = Field(default=Province.ON.value)  # drives default tax labels
     accountant_email: str | None = Field(default=None)
 
-    # Business / billing identity — the fields that normally appear on a business
-    # invoice. They become the EN 16931 *buyer party* in the UBL + JSON exports, so
-    # the structured e-invoice carries the ZZP'er's real company details.
-    company_name: str | None = Field(default=None)
-    vat_number: str | None = Field(default=None)      # buyer BTW-nummer (BT-48)
-    kvk_number: str | None = Field(default=None)      # buyer registration id (BT-47)
-    street: str | None = Field(default=None)          # BT-50
-    postal_code: str | None = Field(default=None)     # BT-53
-    city: str | None = Field(default=None)            # BT-52
-    country: str = Field(default="NL")                # BT-55
+    # Billing / plan. Server is the single source of truth for what a user can
+    # do — the frontend must never infer entitlement from local state alone.
+    plan: str = Field(default=Plan.FREE.value)
+    stripe_customer_id: str | None = Field(default=None)
+    stripe_subscription_id: str | None = Field(default=None)
+    subscription_status: str | None = Field(default=None)  # mirrors Stripe status
+
+    # Unique, unguessable alias for inbound email forwarding, e.g.
+    # "a1b2c3d4@receipts.tradetrack.app". Generated at signup. Never derived
+    # from the user's real email or name (that would make it guessable).
+    forwarding_alias: str = Field(index=True, unique=True)
 
     created_at: datetime = Field(
         default_factory=_utcnow, sa_type=DateTime(timezone=True)
@@ -89,253 +137,193 @@ class User(SQLModel, table=True):
 
 
 class Receipt(SQLModel, table=True):
-    """A structured, EN 16931-inspired receipt (purchase invoice).
-
-    Flat typed columns per the project's "keep it simple" convention; only the
-    variable-length ``invoice_lines`` is JSON. ``invoice_id`` is the primary key
-    *and* the public URL slug (``/receipt/ZZP-2026-0001``).
+    """An uploaded or emailed receipt: raw file reference + AI-extracted fields
+    + user corrections. Always owned — enforce ``user_id == current_user.id``
+    on every read/write in the router, not just in the UI.
     """
 
     __tablename__ = "receipts"
 
-    invoice_id: str = Field(primary_key=True)  # "ZZP-2026-0001"
+    id: str = Field(primary_key=True)  # "TT-2026-0001"
+    user_id: UUID = Field(foreign_key="users.id", index=True, nullable=False)
 
-    # Nullable: receipts are created ownerless at the merchant checkout and only
-    # link to a user the first time that (logged-in) user exports/emails them.
-    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
+    source: str = Field(default=ReceiptSource.UPLOAD.value)
+    processing_status: str = Field(default=ProcessingStatus.PENDING.value, index=True)
+    extraction_confidence: str = Field(default=ExtractionConfidence.UNKNOWN.value)
+    extraction_error: str | None = Field(default=None)  # user-facing failure reason
 
-    issue_date: str           # ISO date "2026-06-04" (UBL IssueDate is a date)
-    issue_time: str           # "14:32:05"
-    currency: str = Field(default="EUR")
-    channel: str              # Channel value
+    # Original file reference. If no object storage is configured, these may be
+    # null and only the extracted structured data is kept (document this to
+    # the user — do not claim a re-downloadable original exists if it doesn't).
+    original_filename: str | None = Field(default=None)
+    file_mime_type: str | None = Field(default=None)
+    file_storage_key: str | None = Field(default=None)  # key/URL in object storage
+    file_size_bytes: int | None = Field(default=None)
 
-    # Seller / AccountingSupplierParty
-    supplier_name: str
-    supplier_vat: str | None = Field(default=None)
-    supplier_address: str
-    supplier_country: str = Field(default="NL")
+    # --- Extracted / user-corrected fields --------------------------------
+    # Every one of these may be null if unreadable — never fabricate a value.
+    merchant: str | None = Field(default=None)
+    receipt_date: str | None = Field(default=None)   # ISO date "2026-06-04"
+    currency: str = Field(default="CAD")
+    receipt_number: str | None = Field(default=None)
 
-    # Buyer snapshot / AccountingCustomerParty (overridden by the linked user at
-    # UBL time, where a real name + identity are required by EN 16931).
-    buyer_name: str = Field(default="Guest user")
-    buyer_email: str | None = Field(default=None)
+    # [{description, quantity, unit_price, amount}, ...] — decimals as strings
+    line_items: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
 
-    # [{id, description, quantity, unit_price, vat_rate, line_extension_amount,
-    #   line_tax_total}, ...] — decimals stored as strings.
-    invoice_lines: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
+    # [{"label": "HST", "amount": "13.00"}, ...] — labels come from the receipt
+    # itself (or the user), never invented from a province's "typical" rate.
+    tax_lines: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
 
-    # LegalMonetaryTotal / TaxTotal
-    line_extension_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_exclusive_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_inclusive_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    payable_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_total: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
+    subtotal: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2)))
+    tax_total: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2)))
+    total: Decimal | None = Field(default=None, sa_column=Column(Numeric(10, 2)))
 
-    delivery_url: str
-    status: str = Field(default=ReceiptStatus.GENERATED.value)
+    province: str | None = Field(default=None)  # jurisdiction for this specific receipt
 
-    # Delivery status (mock email). Flattened instead of a nested JSON "sent_to".
-    sent_to_user_email: str | None = Field(default=None)
-    sent_to_accountant_email: str | None = Field(default=None)
-    sent_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
+    category: str | None = Field(default=None)       # from EXPENSE_CATEGORIES
+    category_is_ai_suggested: bool = Field(default=False)  # False once user confirms/edits
 
-    # Back-link to a refund correction, if any.
-    credit_note_id: str | None = Field(default=None)
+    # Non-binding notes — e.g. "tax amount unclear, please verify" — shown as a
+    # warning banner, never silently dropped.
+    review_notes: str | None = Field(default=None)
+
+    reviewed_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
 
     created_at: datetime = Field(
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), index=True
+    )
+    updated_at: datetime = Field(
         default_factory=_utcnow, sa_type=DateTime(timezone=True)
     )
 
 
-class CreditNote(SQLModel, table=True):
-    """A linked correction for a refund/return. References the original receipt via
-    ``original_receipt_id`` (UBL ``BillingReference``) and never mutates it."""
+class UsageEvent(SQLModel, table=True):
+    """One row per successfully SAVED receipt. The free-plan monthly limit is
+    enforced by counting these rows in the current billing period — never by
+    trusting a client-side counter. Failed/unsaved processing attempts must
+    NOT create a row here.
+    """
 
-    __tablename__ = "credit_notes"
+    __tablename__ = "usage_events"
 
-    credit_note_id: str = Field(primary_key=True)  # "CN-2026-0001"
-    original_receipt_id: str = Field(foreign_key="receipts.invoice_id", index=True)
-    user_id: UUID | None = Field(default=None, foreign_key="users.id", index=True)
-
-    issue_date: str
-    issue_time: str
-    currency: str = Field(default="EUR")
-
-    # Same line shape as a receipt; these are the *credited* (returned) items.
-    credited_items: list[dict] = Field(default_factory=list, sa_column=Column(JSON))
-
-    line_extension_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_exclusive_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_inclusive_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    payable_amount: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-    tax_total: Decimal = Field(sa_column=Column(Numeric(10, 2), nullable=False))
-
-    reason: str = Field(default="Customer refund")
-    status: str = Field(default=CreditNoteStatus.GENERATED.value)
-
-    sent_to_user_email: str | None = Field(default=None)
-    sent_to_accountant_email: str | None = Field(default=None)
-    sent_at: datetime | None = Field(default=None, sa_type=DateTime(timezone=True))
-
+    id: UUID = Field(default_factory=uuid4, primary_key=True)
+    user_id: UUID = Field(foreign_key="users.id", index=True, nullable=False)
+    receipt_id: str = Field(foreign_key="receipts.id", index=True)
     created_at: datetime = Field(
-        default_factory=_utcnow, sa_type=DateTime(timezone=True)
+        default_factory=_utcnow, sa_type=DateTime(timezone=True), index=True
     )
 
 
 # --------------------------------------------------------------------------- #
-# Sequential, human-readable IDs (ZZP-2026-0001 / CN-2026-0001)
+# Sequential, human-readable receipt IDs (TT-2026-0001)
 # --------------------------------------------------------------------------- #
-async def next_invoice_id(session: AsyncSession, year: int | None = None) -> str:
+async def next_receipt_id(session: AsyncSession, year: int | None = None) -> str:
     year = year or _utcnow().year
     count = await session.scalar(select(func.count()).select_from(Receipt))
-    return f"ZZP-{year}-{(count or 0) + 1:04d}"
-
-
-async def next_credit_note_id(session: AsyncSession, year: int | None = None) -> str:
-    year = year or _utcnow().year
-    count = await session.scalar(select(func.count()).select_from(CreditNote))
-    return f"CN-{year}-{(count or 0) + 1:04d}"
+    return f"TT-{year}-{(count or 0) + 1:04d}"
 
 
 # --------------------------------------------------------------------------- #
-# Schemas — Users (the optional account)
+# Schemas — Users / account
 # --------------------------------------------------------------------------- #
-class BusinessDetails(BaseModel):
-    """The buyer's business identity (shared by create/update/out)."""
-
-    company_name: str | None = None
-    vat_number: str | None = None
-    kvk_number: str | None = None
-    street: str | None = None
-    postal_code: str | None = None
-    city: str | None = None
-    country: str = "NL"
-
-
-class UserCreate(BusinessDetails):
+class UserCreate(BaseModel):
     email: EmailStr
     first_name: str
     last_name: str
     password: str = Field(min_length=8)
+    business_name: str | None = None
+    province: Province = Province.ON
     accountant_email: EmailStr | None = None
 
 
 class UserUpdate(BaseModel):
     first_name: str | None = None
     last_name: str | None = None
+    business_name: str | None = None
+    province: Province | None = None
     accountant_email: EmailStr | None = None
-    company_name: str | None = None
-    vat_number: str | None = None
-    kvk_number: str | None = None
-    street: str | None = None
-    postal_code: str | None = None
-    city: str | None = None
-    country: str | None = None
 
 
-class UserOut(BusinessDetails):
+class UserOut(BaseModel):
     id: UUID
     email: EmailStr
     first_name: str
     last_name: str
-    accountant_email: EmailStr | None = None
+    business_name: str | None
+    province: str
+    accountant_email: str | None
+    plan: Plan
+    subscription_status: str | None
+    forwarding_alias: str
     created_at: datetime
 
 
 # --------------------------------------------------------------------------- #
-# Schemas — Checkout / Receipts
+# Schemas — Receipts
 # --------------------------------------------------------------------------- #
-class BasketLine(BaseModel):
-    """A single line as it comes from the (simulated) point-of-sale system."""
-
+class LineItemOut(BaseModel):
     description: str
-    quantity: float = 1
-    unit_price: Decimal
-    vat_rate: Decimal = Decimal("0.21")  # Dutch standard rate
+    quantity: float | None = None
+    unit_price: Decimal | None = None
+    amount: Decimal | None = None
 
 
-class CheckoutRequest(BaseModel):
-    merchant_key: str               # "bouwmaat" | "shell"
-    channel: Channel = Channel.NFC
-
-
-class InvoiceLineOut(BaseModel):
-    id: int
-    description: str
-    quantity: float
-    unit_price: Decimal
-    vat_rate: Decimal
-    line_extension_amount: Decimal
-    line_tax_total: Decimal
+class TaxLineOut(BaseModel):
+    label: str
+    amount: Decimal
 
 
 class ReceiptOut(BaseModel):
-    invoice_id: str
-    issue_date: str
-    issue_time: str
+    id: str
+    source: ReceiptSource
+    processing_status: ProcessingStatus
+    extraction_confidence: ExtractionConfidence
+    extraction_error: str | None
+
+    original_filename: str | None
+    file_mime_type: str | None
+    has_original_file: bool  # computed: file_storage_key is not None
+
+    merchant: str | None
+    receipt_date: str | None
     currency: str
-    channel: Channel
-    supplier_name: str
-    supplier_vat: str | None
-    supplier_address: str
-    supplier_country: str
-    buyer_name: str
-    buyer_email: str | None
-    invoice_lines: list[InvoiceLineOut]
-    line_extension_amount: Decimal
-    tax_exclusive_amount: Decimal
-    tax_inclusive_amount: Decimal
-    payable_amount: Decimal
-    tax_total: Decimal
-    delivery_url: str
-    status: ReceiptStatus
-    sent_to_user_email: str | None
-    sent_to_accountant_email: str | None
-    sent_at: datetime | None
-    credit_note_id: str | None
+    receipt_number: str | None
+    line_items: list[LineItemOut]
+    tax_lines: list[TaxLineOut]
+    subtotal: Decimal | None
+    tax_total: Decimal | None
+    total: Decimal | None
+    province: str | None
+
+    category: str | None
+    category_is_ai_suggested: bool
+    review_notes: str | None
+
+    reviewed_at: datetime | None
     created_at: datetime
+    updated_at: datetime
 
 
-class CreditNoteOut(BaseModel):
-    credit_note_id: str
-    original_receipt_id: str
-    issue_date: str
-    issue_time: str
-    currency: str
-    credited_items: list[InvoiceLineOut]
-    line_extension_amount: Decimal
-    tax_exclusive_amount: Decimal
-    tax_inclusive_amount: Decimal
-    payable_amount: Decimal
-    tax_total: Decimal
-    reason: str
-    status: CreditNoteStatus
-    sent_to_user_email: str | None
-    sent_to_accountant_email: str | None
-    sent_at: datetime | None
-    created_at: datetime
+class ReceiptUpdate(BaseModel):
+    """User corrections applied before/at save time. All fields optional —
+    send only what changed."""
+
+    merchant: str | None = None
+    receipt_date: str | None = None
+    currency: str | None = None
+    receipt_number: str | None = None
+    line_items: list[LineItemOut] | None = None
+    tax_lines: list[TaxLineOut] | None = None
+    subtotal: Decimal | None = None
+    tax_total: Decimal | None = None
+    total: Decimal | None = None
+    province: Province | None = None
+    category: str | None = None
 
 
-class RefundResponse(BaseModel):
-    credit_note: CreditNoteOut
-    # Set when the original receipt had already been emailed to an accountant.
-    warning: str | None = None
-    # Set when the new credit note was auto-emailed to the accountant.
-    credit_note_emailed_to: str | None = None
-
-
-# --------------------------------------------------------------------------- #
-# Schemas — Refund / Email requests
-# --------------------------------------------------------------------------- #
-class RefundRequest(BaseModel):
-    # Either refund everything, or list the line ids to credit.
-    full: bool = False
-    line_ids: list[int] = []
-    reason: str = "Customer returned unused item"
-
-
-class EmailRequest(BaseModel):
-    # Override recipient; if omitted we use the receipt's buyer / the user's email.
-    to: EmailStr | None = None
-    # "self" -> the logged-in user, "accountant" -> their accountant_email.
-    target: str = "self"
+class UsageOut(BaseModel):
+    plan: Plan
+    saved_this_period: int
+    limit: int | None  # None == unlimited (premium)
+    period_start: datetime
+    period_end: datetime
