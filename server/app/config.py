@@ -21,7 +21,8 @@ class Settings(BaseSettings):
     jwt_algorithm: str = "HS256"
     token_ttl_hours: int = 24
 
-    # Database
+    # Database. ZZPAY_POSTGRES_URL (a full URL, e.g. from Neon) wins over the fields below.
+    postgres_url: str = ""
     postgres_host: str = "localhost"
     postgres_port: int = 5434
     postgres_user: str = "zzpay"
@@ -57,6 +58,10 @@ class Settings(BaseSettings):
     @cached_property
     def database_url(self) -> str:
         """Async SQLAlchemy URL (asyncpg driver)."""
+        if self.postgres_url:
+            url = self.postgres_url.strip().replace("postgres://", "postgresql://", 1)
+            url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+            return url.split("?")[0]  # drop ?sslmode=... (asyncpg takes ssl via connect_args)
         return (
             f"postgresql+asyncpg://{self.postgres_user}:{self.postgres_password}"
             f"@{self.postgres_host}:{self.postgres_port}/{self.postgres_db}"
