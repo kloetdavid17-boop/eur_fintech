@@ -52,9 +52,10 @@ def get_plans() -> dict[str, PlanDef]:
                 "Unlimited saved receipts",
                 "Email-forwarding receipt capture",
                 "Date and amount filters",
-                "Monthly expense summary (PDF and CSV)",
+                "Expense summary by month, quarter or year, with tax by province (PDF and CSV)",
+                "Accountant package: summary, receipts CSV and original files in one ZIP",
                 "CSV / JSON export",
-                "Email the month's records to your accountant",
+                "Email a period's records to your accountant",
             ],
         ),
     }
@@ -70,7 +71,8 @@ FEATURE_MATRIX: list[tuple[str, bool, bool]] = [
     ("Unlimited saved receipts", False, True),
     ("Email-forwarding receipt capture", False, True),
     ("Date and amount filters", False, True),
-    ("Monthly expense summary", False, True),
+    ("Summary by month, quarter or year, with tax by province", False, True),
+    ("Accountant package (ZIP with original files)", False, True),
     ("CSV & JSON export", False, True),
     ("Email records to your accountant", False, True),
 ]

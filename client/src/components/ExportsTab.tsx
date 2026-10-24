@@ -1,19 +1,20 @@
-// Premium exports: CSV/JSON of saved receipts, a monthly summary, and email to the accountant.
+// Premium exports: CSV/JSON of saved receipts, a period summary, an accountant package, and email to the accountant.
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { PiDownloadSimple, PiEnvelopeSimple } from "react-icons/pi";
+import { PiDownloadSimple, PiEnvelopeSimple, PiFileZip } from "react-icons/pi";
 import {
   apiErrorInfo,
   emailAccountant,
   exportUrl,
   getSummary,
+  packageUrl,
   summaryDownloadUrl,
   type ExportParams,
 } from "../api";
 import { useAuth } from "../auth";
 import { useConfig } from "../hooks/useConfig";
 import { downloadFile } from "../lib/download";
-import { currentMonth, monthLabel, money } from "../lib/format";
+import { currentMonth, defaultPeriodChoice, periodLabel, periodParams, money, type PeriodChoice } from "../lib/format";
 import { Alert } from "./Alert";
 import { Button } from "./Button";
 import { Card } from "./Card";
@@ -35,14 +36,16 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
   const [busy, setBusy] = useState<string | null>(null);
   const [msg, setMsg] = useState<{ kind: "success" | "error" | "warning"; text: string } | null>(null);
 
-  const [sumMonth, setSumMonth] = useState(currentMonth());
+  const [period, setPeriod] = useState<PeriodChoice>(defaultPeriodChoice());
+  const params = periodParams(period);
   const premium = user?.plan === "PREMIUM";
   const summary = useQuery({
-    queryKey: ["summary", sumMonth],
-    queryFn: () => getSummary(sumMonth),
-    enabled: premium && MONTH_RE.test(sumMonth),
+    queryKey: ["summary", params],
+    queryFn: () => getSummary(params!),
+    enabled: premium && params !== null,
     retry: false,
   });
+  const set = (patch: Partial<PeriodChoice>) => setPeriod((p) => ({ ...p, ...patch }));
 
   if (!user || !config) return <PageSpinner />;
 
@@ -50,9 +53,9 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
     return (
       <div className="space-y-4">
         <h2 className="text-lg font-bold text-ink">Exports</h2>
-        <PremiumLock title="CSV and JSON exports, monthly summary, accountant email" onUpgrade={() => goTo("plan")}>
-          Premium lets you export saved receipts, see a monthly summary by category and tax type, and email
-          it to your accountant. On the Free plan you can still download each receipt's PDF summary from
+        <PremiumLock title="Exports, expense summaries and the accountant package" onUpgrade={() => goTo("plan")}>
+          Premium lets you export saved receipts, see a summary by month, quarter or year (by category, tax
+          type and province), and send your accountant one ZIP with the summary, a CSV and the original files. On the Free plan you can still download each receipt's PDF summary from
           its page.
         </PremiumLock>
       </div>
@@ -89,8 +92,8 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
     setBusy("email");
     setMsg(null);
     try {
-      await emailAccountant(sumMonth);
-      setMsg({ kind: "success", text: `Sent the ${monthLabel(sumMonth)} CSV and summary PDF to ${user!.accountant_email}.` });
+      await emailAccountant(params!);
+      setMsg({ kind: "success", text: `Sent the ${periodLabel(s?.label ?? "")} CSV and summary PDF to ${user!.accountant_email}.` });
     } catch (err) {
       const info = apiErrorInfo(err);
       if (info.code === "no_accountant_email")
@@ -104,7 +107,8 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
   }
 
   const s = summary.data;
-  const sumValid = MONTH_RE.test(sumMonth);
+  const sumValid = params !== null;
+  const fileTag = s?.label.replace(" to ", "_to_") ?? "period";
   const smtp = config.services.smtp_configured;
 
   return (
@@ -146,9 +150,38 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
       </Card>
 
       <Card className="space-y-4 p-4">
-        <h3 className="font-semibold text-ink">Monthly summary</h3>
-        <div className="max-w-xs">
-          <Input label="Month" type="month" placeholder="YYYY-MM" value={sumMonth} onChange={(e) => setSumMonth(e.target.value)} error={sumValid ? null : "Choose a month (YYYY-MM)."} />
+        <h3 className="font-semibold text-ink">Expense summary</h3>
+        <p className="text-sm text-slate-700">Pick a month, quarter or year to see what your saved receipts add up to.</p>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <Select label="Period" value={period.kind} onChange={(e) => set({ kind: e.target.value as PeriodChoice["kind"] })}>
+            <option value="month">A month</option>
+            <option value="quarter">A quarter</option>
+            <option value="year">A year</option>
+            <option value="custom">A custom date range</option>
+          </Select>
+          {period.kind === "month" ? (
+            <Input label="Month" type="month" placeholder="YYYY-MM" value={period.month} onChange={(e) => set({ month: e.target.value })} error={sumValid ? null : "Choose a month (YYYY-MM)."} />
+          ) : null}
+          {period.kind === "quarter" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Select label="Quarter" value={period.quarter} onChange={(e) => set({ quarter: e.target.value })}>
+                <option value="1">Q1 (Jan to Mar)</option>
+                <option value="2">Q2 (Apr to Jun)</option>
+                <option value="3">Q3 (Jul to Sep)</option>
+                <option value="4">Q4 (Oct to Dec)</option>
+              </Select>
+              <Input label="Year" inputMode="numeric" maxLength={4} value={period.year} onChange={(e) => set({ year: e.target.value })} error={sumValid ? null : "Enter a 4-digit year."} />
+            </div>
+          ) : null}
+          {period.kind === "year" ? (
+            <Input label="Year" inputMode="numeric" maxLength={4} value={period.year} onChange={(e) => set({ year: e.target.value })} error={sumValid ? null : "Enter a 4-digit year."} />
+          ) : null}
+          {period.kind === "custom" ? (
+            <div className="grid grid-cols-2 gap-3">
+              <Input label="From" type="date" value={period.from} onChange={(e) => set({ from: e.target.value })} />
+              <Input label="To" type="date" value={period.to} onChange={(e) => set({ to: e.target.value })} error={period.from && period.to && period.from > period.to ? "The start date must be before the end date." : null} />
+            </div>
+          ) : null}
         </div>
         {summary.isLoading && sumValid ? (
           <PageSpinner label="Loading summary…" />
@@ -156,7 +189,7 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
           <Alert kind="error">{apiErrorInfo(summary.error).message}</Alert>
         ) : s ? (
           s.count === 0 ? (
-            <p className="text-sm text-slate-600">No saved receipts for {monthLabel(s.month)}.</p>
+            <p className="text-sm text-slate-600">No saved receipts for {periodLabel(s.label)}.</p>
           ) : (
             <div className="space-y-4 text-sm">
               <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
@@ -174,7 +207,7 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
               </dl>
               {s.undated_count > 0 || s.flagged_count > 0 ? (
                 <Alert kind="warning">
-                  {s.undated_count > 0 ? `${s.undated_count} saved receipt${s.undated_count === 1 ? " has" : "s have"} no date and may not be counted in any month. ` : ""}
+                  {s.undated_count > 0 ? `${s.undated_count} saved receipt${s.undated_count === 1 ? " has" : "s have"} no date and may not be counted in any period. ` : ""}
                   {s.flagged_count > 0 ? `${s.flagged_count} receipt${s.flagged_count === 1 ? " has" : "s have"} unresolved warnings worth reviewing.` : ""}
                 </Alert>
               ) : null}
@@ -201,6 +234,33 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
                   </tbody>
                 </table>
               </div>
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[32rem] text-left">
+                  <caption className="mb-1 text-left font-semibold text-ink">Tax as printed on receipts, by province</caption>
+                  <thead className="text-slate-700">
+                    <tr>
+                      <th scope="col" className="py-1.5 pr-3 font-semibold">Province</th>
+                      <th scope="col" className="py-1.5 pr-3 text-right font-semibold">Receipts</th>
+                      {["GST", "HST", "PST", "QST"].map((t) => (
+                        <th key={t} scope="col" className="py-1.5 pr-3 text-right font-semibold">{t}</th>
+                      ))}
+                      <th scope="col" className="py-1.5 text-right font-semibold">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {s.by_province.map((p) => (
+                      <tr key={p.province}>
+                        <th scope="row" className="py-1.5 pr-3 font-normal">{p.province}</th>
+                        <td className="py-1.5 pr-3 text-right tabular-nums">{p.count}</td>
+                        {["GST", "HST", "PST", "QST"].map((t) => (
+                          <td key={t} className="py-1.5 pr-3 text-right tabular-nums">{money(p.tax[t] ?? "0.00", s.currency)}</td>
+                        ))}
+                        <td className="py-1.5 text-right tabular-nums">{money(p.total, s.currency)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
               <div>
                 <p className="font-semibold text-ink">Tax as printed on receipts, by type</p>
                 <ul className="mt-1 grid grid-cols-2 gap-x-6 gap-y-1 sm:grid-cols-5">
@@ -220,20 +280,27 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
           )
         ) : null}
         <div className="flex flex-wrap gap-2">
-          <Button variant="secondary" disabled={!sumValid || busy !== null} onClick={() => void download("scsv", summaryDownloadUrl(sumMonth, "csv"), `tradetrack-summary-${sumMonth}.csv`)}>
+          <Button variant="secondary" disabled={!sumValid || busy !== null} onClick={() => void download("scsv", summaryDownloadUrl(params!, "csv"), `tradetrack-summary-${fileTag}.csv`)}>
             {busy === "scsv" ? <Spinner label="Preparing…" /> : (<><PiDownloadSimple aria-hidden="true" /> Summary CSV</>)}
           </Button>
-          <Button variant="secondary" disabled={!sumValid || busy !== null} onClick={() => void download("spdf", summaryDownloadUrl(sumMonth, "pdf"), `tradetrack-summary-${sumMonth}.pdf`)}>
+          <Button variant="secondary" disabled={!sumValid || busy !== null} onClick={() => void download("spdf", summaryDownloadUrl(params!, "pdf"), `tradetrack-summary-${fileTag}.pdf`)}>
             {busy === "spdf" ? <Spinner label="Preparing…" /> : (<><PiDownloadSimple aria-hidden="true" /> Summary PDF</>)}
           </Button>
         </div>
       </Card>
 
       <Card className="space-y-3 p-4">
-        <h3 className="font-semibold text-ink">Send to your accountant</h3>
+        <h3 className="font-semibold text-ink">For your accountant</h3>
+        <p className="text-sm text-slate-700">
+          The accountant package is one ZIP for the period above: the summary PDF, a CSV of every receipt and the
+          original receipt files, so nothing has to be chased later. It works without email.
+        </p>
+        <Button disabled={!sumValid || busy !== null} onClick={() => void download("zip", packageUrl(params!), `tradetrack-accountant-package-${fileTag}.zip`)}>
+          {busy === "zip" ? <Spinner label="Preparing…" /> : (<><PiFileZip aria-hidden="true" /> Download accountant package</>)}
+        </Button>
         {user.accountant_email ? (
           <p className="text-sm text-slate-700">
-            Emails the {monthLabel(sumMonth)} CSV and summary PDF to <strong className="break-all">{user.accountant_email}</strong>.
+            Or email the CSV and summary PDF for this period to <strong className="break-all">{user.accountant_email}</strong>.
           </p>
         ) : (
           <Alert kind="info" action={<Button size="sm" variant="secondary" onClick={() => goTo("account")}>Add accountant email</Button>}>
@@ -242,12 +309,12 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
         )}
         {!smtp ? (
           <Alert kind="warning">
-            Email sending isn't configured on this server, so TradeTrack can't send this for you. Download
-            the summary above and send it yourself.
+            Email sending isn't configured on this server, so TradeTrack can't email this for you. Download
+            the accountant package above and send it yourself.
           </Alert>
         ) : null}
         <Button disabled={!sumValid || !user.accountant_email || !smtp || busy !== null} onClick={() => void sendToAccountant()}>
-          {busy === "email" ? <Spinner label="Sending…" /> : (<><PiEnvelopeSimple aria-hidden="true" /> Email {monthLabel(sumMonth)} to accountant</>)}
+          {busy === "email" ? <Spinner label="Sending…" /> : (<><PiEnvelopeSimple aria-hidden="true" /> Email this period to accountant</>)}
         </Button>
       </Card>
     </div>

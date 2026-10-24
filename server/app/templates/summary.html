@@ -19,7 +19,7 @@
 </head>
 <body>
   <div class="brand">TradeTrack</div>
-  <div class="muted">Monthly expense summary</div>
+  <div class="muted">Expense summary</div>
   <h1>{{ month_label }}</h1>
   <div class="muted">{{ business }} &middot; {{ summary.count }} saved receipt{{ "" if summary.count == 1 else "s" }} &middot; amounts in {{ summary.currency }}</div>
 
@@ -29,7 +29,7 @@
     {% for c in summary.by_category %}
     <tr><td>{{ c.category }}</td><td class="r">{{ c.count }}</td><td class="r">{{ c.subtotal }}</td><td class="r">{{ c.tax_total }}</td><td class="r">{{ c.total }}</td></tr>
     {% endfor %}
-    {% if not summary.by_category %}<tr><td colspan="5" class="muted">No saved receipts dated in this month.</td></tr>{% endif %}
+    {% if not summary.by_category %}<tr><td colspan="5" class="muted">No saved receipts dated in this period.</td></tr>{% endif %}
     <tr class="tot"><td>Total</td><td class="r">{{ summary.count }}</td><td class="r">{{ summary.subtotal }}</td><td class="r">{{ summary.tax_total }}</td><td class="r">{{ summary.total }}</td></tr>
   </table>
 
@@ -39,6 +39,16 @@
     <tr><td>{{ t }}</td><td class="r">{{ amount }}</td></tr>
     {% endfor %}
   </table>
+
+  {% if summary.by_province %}
+  <h2>Tax shown on receipts, by province</h2>
+  <table>
+    <tr><th>Province</th><th class="r">Receipts</th><th class="r">GST</th><th class="r">HST</th><th class="r">PST</th><th class="r">QST</th><th class="r">Other</th><th class="r">Total</th></tr>
+    {% for p in summary.by_province %}
+    <tr><td>{{ p.province }}</td><td class="r">{{ p.count }}</td><td class="r">{{ p.tax.GST }}</td><td class="r">{{ p.tax.HST }}</td><td class="r">{{ p.tax.PST }}</td><td class="r">{{ p.tax.QST }}</td><td class="r">{{ p.tax.OTHER }}</td><td class="r">{{ p.total }}</td></tr>
+    {% endfor %}
+  </table>
+  {% endif %}
 
   <h2>Receipts</h2>
   <table>
@@ -50,7 +60,7 @@
 
   <p class="muted small" style="margin-top:14px">
     {% if summary.flagged_count %}{{ summary.flagged_count }} receipt(s) have items flagged for double-checking.<br />{% endif %}
-    {% if summary.undated_count %}{{ summary.undated_count }} receipt(s) saved this month have no date and are not included above.<br />{% endif %}
+    {% if summary.undated_count %}{{ summary.undated_count }} receipt(s) saved in this period have no date and are not included above.<br />{% endif %}
     {% if summary.other_currency_count %}{{ summary.other_currency_count }} receipt(s) in other currencies are not included in the CAD totals.<br />{% endif %}
     Subtotal and tax are added up only where they were available on a receipt. Categories may be AI suggestions.
     TradeTrack does not provide tax advice: whether an expense is deductible or tax is recoverable is for you and your

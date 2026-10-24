@@ -159,3 +159,105 @@ async def test_pdf_escapes_user_text(client, two_users, ai):
     rec = await upload(client, png_bytes(60))
     r = await client.get(f"/api/receipts/{rec['id']}/pdf")
     assert r.status_code == 200 and r.content.startswith(b"%PDF")
+
+
+# --------------------------------------------------------------------------- #
+# Periods (quarter / year), province breakdown, accountant package
+# --------------------------------------------------------------------------- #
+async def _q3_data(client, ai):
+    await _saved(client, ai, 60, receipt_date="2026-07-10", province="ON", subtotal="100.00", tax_total="13.00", total="113.00",
+                 tax_lines=[{"label": "HST 13%", "amount": "13.00", "tax_type": "HST"}], line_items=[])
+    await _saved(client, ai, 61, receipt_date="2026-09-20", province="BC", subtotal="100.00", tax_total="12.00", total="112.00",
+                 tax_lines=[{"label": "GST 5%", "amount": "5.00", "tax_type": "GST"},
+                            {"label": "PST 7%", "amount": "7.00", "tax_type": "PST"}], line_items=[])
+    await _saved(client, ai, 62, receipt_date="2026-10-02", province="ON", subtotal="10.00", tax_total="1.30", total="11.30",
+                 tax_lines=[{"label": "HST 13%", "amount": "1.30", "tax_type": "HST"}], line_items=[])
+
+
+async def test_quarter_summary_by_province(client, two_users, ai):
+    await upgrade(client)
+    await _q3_data(client, ai)
+    s = (await client.get("/api/receipts/summary", params={"date_from": "2026-07-01", "date_to": "2026-09-30"})).json()
+    assert s["count"] == 2 and s["label"] == "2026-07-01 to 2026-09-30"
+    assert (s["subtotal"], s["tax_total"], s["total"]) == ("200.00", "25.00", "225.00")
+    assert s["by_tax_type"] == {"GST": "5.00", "HST": "13.00", "PST": "7.00", "QST": "0.00", "OTHER": "0.00"}
+    by = {p["province"]: p for p in s["by_province"]}
+    assert by["ON"]["tax"]["HST"] == "13.00" and by["ON"]["tax"]["GST"] == "0.00" and by["ON"]["count"] == 1
+    assert by["BC"]["tax"]["GST"] == "5.00" and by["BC"]["tax"]["PST"] == "7.00" and by["BC"]["total"] == "112.00"
+    # a plain month still works and keeps its label
+    m = (await client.get("/api/receipts/summary", params={"month": "2026-10"})).json()
+    assert m["label"] == "2026-10" and m["count"] == 1
+    pdf = await client.get("/api/receipts/export/summary", params={"date_from": "2026-07-01", "date_to": "2026-09-30"})
+    assert pdf.status_code == 200 and pdf.content.startswith(b"%PDF")
+    csv_ = (await client.get("/api/receipts/export/summary",
+                             params={"date_from": "2026-07-01", "date_to": "2026-09-30", "format": "csv"})).text
+    assert "province,BC" in csv_ and "province_tax:BC,PST" in csv_
+
+
+@pytest.mark.parametrize("params", [
+    {"date_from": "2026-07-01"}, {"date_to": "2026-09-30"},
+    {"date_from": "2026-09-30", "date_to": "2026-07-01"},
+    {"date_from": "2026-01-01", "date_to": "2029-01-01"},
+    {"month": "2026-10", "date_from": "2026-07-01", "date_to": "2026-09-30"},
+    {"date_from": "nope", "date_to": "2026-09-30"},
+])
+async def test_invalid_periods_rejected(client, two_users, params):
+    await upgrade(client)
+    for url in ("/api/receipts/summary", "/api/receipts/export/summary", "/api/receipts/export/package"):
+        r = await client.get(url, params=params)
+        assert r.status_code == 422, (url, params, r.status_code)
+
+
+async def test_accountant_package_contents_and_ownership(client, client2, two_users, ai):
+    import zipfile
+
+    await upgrade(client)
+    await _q3_data(client, ai)
+    # another user's receipt in the same period must never appear
+    await upgrade(client2)
+    await _saved(client2, ai, 70, receipt_date="2026-08-01", merchant="Someone Else Ltd", total="1.00", subtotal="1.00",
+                 tax_total="0.00", tax_lines=[], line_items=[])
+    r = await client.get("/api/receipts/export/package", params={"date_from": "2026-07-01", "date_to": "2026-09-30"})
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    assert "tradetrack-accountant-package-2026-07-01_to_2026-09-30.zip" in r.headers["content-disposition"]
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    names = z.namelist()
+    assert {"README.txt", "summary.pdf", "receipts.csv"} <= set(names)
+    originals = [n for n in names if n.startswith("originals/")]
+    assert len(originals) == 2 and all(n.endswith(".png") for n in originals)
+    assert z.read("summary.pdf").startswith(b"%PDF")
+    rows = list(csv.DictReader(io.StringIO(z.read("receipts.csv").decode("utf-8-sig"))))
+    assert len(rows) == 2 and all("Someone Else" not in (x["merchant"] or "") for x in rows)
+    assert {f"originals/{x['receipt_id']}.png" for x in rows} == set(originals)
+    assert "deductible" in z.read("README.txt").decode()  # disclaimer travels with the package
+
+
+async def test_package_free_plan_and_size_cap(client, two_users, ai, monkeypatch):
+    from app import exports
+
+    r = await client.get("/api/receipts/export/package")
+    assert r.status_code == 402 and r.json()["detail"]["code"] == "premium_required"
+    await upgrade(client)
+    await _q3_data(client, ai)
+    monkeypatch.setattr(exports, "MAX_PACKAGE_RECEIPTS", 1)
+    r = await client.get("/api/receipts/export/package", params={"date_from": "2026-07-01", "date_to": "2026-09-30"})
+    assert r.status_code == 413 and r.json()["detail"]["code"] == "package_too_large"
+
+
+async def test_email_accepts_a_range(client, two_users, ai, monkeypatch):
+    await upgrade(client)
+    await _q3_data(client, ai)
+    await client.put("/api/me", json={"accountant_email": "acct@example.com"})
+    sent = []
+
+    async def fake_send(msg, **kw):
+        sent.append(msg)
+
+    monkeypatch.setattr(settings, "smtp_host", "smtp.example.com")
+    monkeypatch.setattr(mailer.aiosmtplib, "send", fake_send)
+    r = await client.post("/api/receipts/export/email", json={"date_from": "2026-07-01", "date_to": "2026-09-30"})
+    assert r.status_code == 200 and r.json()["receipts"] == 2
+    assert {p.get_filename() for p in sent[0].iter_attachments()} == {
+        "tradetrack-receipts-2026-07-01_to_2026-09-30.csv", "tradetrack-summary-2026-07-01_to_2026-09-30.pdf"}
+    bad = await client.post("/api/receipts/export/email", json={"date_from": "2026-07-01"})
+    assert bad.status_code == 422

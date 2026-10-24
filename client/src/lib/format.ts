@@ -65,3 +65,51 @@ export function monthLabel(month: string): string {
     month: "long",
   });
 }
+
+export type PeriodKind = "month" | "quarter" | "year" | "custom";
+
+export interface PeriodChoice {
+  kind: PeriodKind;
+  month: string; // YYYY-MM
+  year: string; // YYYY
+  quarter: string; // 1-4
+  from: string; // YYYY-MM-DD (custom)
+  to: string; // YYYY-MM-DD (custom)
+}
+
+const pad = (n: number) => String(n).padStart(2, "0");
+const lastDay = (y: number, m: number) => new Date(y, m, 0).getDate(); // m is 1-12
+
+export function defaultPeriodChoice(): PeriodChoice {
+  const d = new Date();
+  return {
+    kind: "month",
+    month: currentMonth(),
+    year: String(d.getFullYear()),
+    quarter: String(Math.floor(d.getMonth() / 3) + 1),
+    from: "",
+    to: "",
+  };
+}
+
+/** The API parameters for a choice, or null while the choice is incomplete or invalid. */
+export function periodParams(c: PeriodChoice): { month?: string; date_from?: string; date_to?: string } | null {
+  if (c.kind === "month") return /^\d{4}-(0[1-9]|1[0-2])$/.test(c.month) ? { month: c.month } : null;
+  if (c.kind === "custom") {
+    if (!c.from || !c.to || c.from > c.to) return null;
+    return { date_from: c.from, date_to: c.to };
+  }
+  const y = Number(c.year);
+  if (!/^\d{4}$/.test(c.year) || y < 2000 || y > 2100) return null;
+  if (c.kind === "year") return { date_from: `${y}-01-01`, date_to: `${y}-12-31` };
+  const q = Number(c.quarter);
+  if (![1, 2, 3, 4].includes(q)) return null;
+  const startM = (q - 1) * 3 + 1;
+  const endM = startM + 2;
+  return { date_from: `${y}-${pad(startM)}-01`, date_to: `${y}-${pad(endM)}-${pad(lastDay(y, endM))}` };
+}
+
+/** Human label for a summary label from the API: "October 2026" or "2026-07-01 to 2026-09-30". */
+export function periodLabel(label: string): string {
+  return /^\d{4}-\d{2}$/.test(label) ? monthLabel(label) : label;
+}

@@ -41,17 +41,18 @@ async def send_month_to_accountant(
     msg["From"] = formataddr((f"{sender_name} via TradeTrack", from_address))
     msg["Reply-To"] = formataddr((sender_name, user.email))
     msg["To"] = to
+    file_label = month.replace(" to ", "_to_")
     msg["Subject"] = f"Expense records for {month} from {sender_name}"
     business = _clean(user.business_name or "")
     msg.set_content(
         f"Hello,\n\n{sender_name}{f' ({business})' if business else ''} shared their saved expense records for "
         f"{month} with you through TradeTrack.\n\n"
-        "Attached: a CSV of the receipts and a PDF monthly summary. Amounts and tax are as shown on the receipts; "
+        "Attached: a CSV of the receipts and a PDF summary of the period. Amounts and tax are as shown on the receipts; "
         "categories may be suggestions. TradeTrack does not provide tax advice.\n\n"
         f"You can reply to this email to reach {sender_name} directly.\n\nTradeTrack"
     )
-    msg.add_attachment(csv_bytes, maintype="text", subtype="csv", filename=f"tradetrack-receipts-{month}.csv")
-    msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=f"tradetrack-summary-{month}.pdf")
+    msg.add_attachment(csv_bytes, maintype="text", subtype="csv", filename=f"tradetrack-receipts-{file_label}.csv")
+    msg.add_attachment(pdf_bytes, maintype="application", subtype="pdf", filename=f"tradetrack-summary-{file_label}.pdf")
 
     try:
         await aiosmtplib.send(

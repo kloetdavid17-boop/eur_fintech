@@ -28,7 +28,7 @@ credentials](#what-works-and-what-needs-credentials).
 | Price | CAD $0 | CAD $5.99 / month |
 | Saved receipts | 5 per calendar month (Toronto time), enforced on the server | Unlimited |
 | AI extraction, category suggestion, PDF summary, search by text/category/status | Yes | Yes |
-| Date and amount filters, monthly summary, CSV/JSON export, email to accountant | No | Yes |
+| Date and amount filters, summary by month/quarter/year with tax by province, accountant package (ZIP), CSV/JSON export, email to accountant | No | Yes |
 | Email forwarding (unique private address) | No | Yes |
 
 Only successfully **saved** receipts count. Failed uploads, duplicates and unsaved drafts never use

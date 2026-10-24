@@ -100,7 +100,7 @@ export function ProfileTab() {
           <Input
             label="Accountant's email (optional)"
             type="email"
-            hint="Used only when you choose to email a monthly summary."
+            hint="Used only when you choose to email a summary."
             value={form.accountant_email}
             onChange={set("accountant_email")}
             error={errors.accountant_email}

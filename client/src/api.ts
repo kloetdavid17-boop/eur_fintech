@@ -220,8 +220,27 @@ export interface Usage {
   resets_on: string;
 }
 
+/** A reporting period: one month, or a date range (how quarters and years are asked for). */
+export interface Period {
+  month?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface ProvinceSummary {
+  province: string; // two-letter code, or "Unknown"
+  count: number;
+  subtotal: string;
+  tax_total: string;
+  total: string;
+  tax: Record<string, string>;
+}
+
 export interface Summary {
-  month: string;
+  month: string; // first month of the period (kept for older clients)
+  label: string; // "2026-10" or "2026-07-01 to 2026-09-30"
+  date_from: string;
+  date_to: string;
   currency: string;
   count: number;
   undated_count: number;
@@ -230,6 +249,7 @@ export interface Summary {
   total: string;
   by_category: { category: string; count: number; subtotal: string; tax_total: string; total: string }[];
   by_tax_type: Record<string, string>;
+  by_province: ProvinceSummary[];
   flagged_count: number;
 }
 
@@ -375,12 +395,12 @@ export async function getUsage(): Promise<Usage> {
   return (await http.get<Usage>("/receipts/usage")).data;
 }
 
-export async function getSummary(month: string): Promise<Summary> {
-  return (await http.get<Summary>("/receipts/summary", { params: { month } })).data;
+export async function getSummary(period: Period): Promise<Summary> {
+  return (await http.get<Summary>("/receipts/summary", { params: period })).data;
 }
 
-export async function emailAccountant(month: string): Promise<{ detail?: string }> {
-  return (await http.post<{ detail?: string }>("/receipts/export/email", { month })).data;
+export async function emailAccountant(period: Period): Promise<{ detail?: string }> {
+  return (await http.post<{ detail?: string }>("/receipts/export/email", period)).data;
 }
 
 // Download URLs (fetched with lib/download.ts so errors show as messages).
@@ -396,8 +416,20 @@ export function exportUrl(p: ExportParams): string {
   return `/api/receipts/export?${q.toString()}`;
 }
 
-export const summaryDownloadUrl = (month: string, format: "csv" | "pdf") =>
-  `/api/receipts/export/summary?month=${encodeURIComponent(month)}&format=${format}`;
+function periodQuery(p: Period): URLSearchParams {
+  const q = new URLSearchParams();
+  for (const k of ["month", "date_from", "date_to"] as const) if (p[k]) q.set(k, p[k]!);
+  return q;
+}
+
+export const summaryDownloadUrl = (p: Period, format: "csv" | "pdf") => {
+  const q = periodQuery(p);
+  q.set("format", format);
+  return `/api/receipts/export/summary?${q.toString()}`;
+};
+
+/** ZIP for the accountant: summary PDF + receipts CSV + original files. */
+export const packageUrl = (p: Period) => `/api/receipts/export/package?${periodQuery(p).toString()}`;
 
 // ---------------------------------------------------------------- billing
 export async function getBillingStatus(): Promise<BillingStatus> {

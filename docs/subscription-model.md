@@ -6,7 +6,7 @@
 | Price | CAD 0.00 | CAD 5.99 / month |
 | Saved receipts | 5 per calendar month | unlimited |
 | Upload, AI extraction, edit, PDF/file download, text/category/status search | yes | yes |
-| Date and amount filters, monthly summary, CSV/JSON export, email to accountant, email forwarding | no | yes |
+| Date and amount filters, summary by month/quarter/year (tax by province), accountant package (ZIP), CSV/JSON export, email to accountant, email forwarding | no | yes |
 
 Overrides: `ZZPAY_FREE_MONTHLY_LIMIT`, `ZZPAY_PREMIUM_PRICE_CAD`. The feature list and comparison table served by
 `GET /api/config` come from `plans.py`, so the UI cannot advertise something the plan config does not list.

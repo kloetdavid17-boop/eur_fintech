@@ -217,8 +217,19 @@ async def list_receipts(
 # --------------------------------------------------------------------------- #
 # Premium: summary + exports
 # --------------------------------------------------------------------------- #
-async def _saved_for_month(session: AsyncSession, user: User, month: str) -> list[Receipt]:
-    start, end = exports.month_range(month)
+def _period(month: str | None, date_from: str | None, date_to: str | None) -> tuple[date, date, str]:
+    """Month, or a custom range (how quarters/years are asked for). 422 on anything invalid."""
+    today = plans.now_utc().astimezone(plans.PERIOD_TZ).date()
+    try:
+        return exports.resolve_period(
+            month.strip() if month and month.strip() else None,
+            _opt_date(date_from, "date_from"), _opt_date(date_to, "date_to"), today,
+        )
+    except ValueError as exc:
+        raise _err(422, "invalid_field", f"Invalid period: {exc}", field="date_from" if date_from or date_to else "month") from None
+
+
+async def _saved_for_period(session: AsyncSession, user: User, start: date, end: date) -> list[Receipt]:
     return list((await session.execute(
         select(Receipt).where(
             Receipt.user_id == user.id,
@@ -228,10 +239,16 @@ async def _saved_for_month(session: AsyncSession, user: User, month: str) -> lis
     )).scalars().all())
 
 
+def _in_period(saved: list[Receipt], start: date, end: date) -> list[Receipt]:
+    return [r for r in saved if r.receipt_date and start <= r.receipt_date <= end]
+
+
 @router.get("/summary")
-async def monthly_summary(user: PremiumUser, session: SessionDep, month: str | None = None) -> dict:
-    month = _parse_month(month)
-    return exports.build_summary(month, await _saved_for_month(session, user, month))
+async def period_summary(
+    user: PremiumUser, session: SessionDep, month: str | None = None, date_from: str | None = None, date_to: str | None = None
+) -> dict:
+    start, end, label = _period(month, date_from, date_to)
+    return exports.build_period_summary(start, end, label, await _saved_for_period(session, user, start, end))
 
 
 @router.get("/export")
@@ -270,21 +287,53 @@ async def export_receipts(
     return Response(body, media_type=media, headers=pdf.download_headers(f"tradetrack-receipts-{label}.{format}"))
 
 
+async def _summary_pdf(user: User, summary: dict, receipts: list[Receipt]) -> bytes:
+    business = user.business_name or f"{user.first_name} {user.last_name}"
+    return await asyncio.to_thread(pdf.render_summary_pdf, summary, [r for r in receipts if r.currency == "CAD"], business)
+
+
 @router.get("/export/summary")
-async def export_summary(user: PremiumUser, session: SessionDep, month: str | None = None, format: str = "pdf") -> Response:
+async def export_summary(
+    user: PremiumUser, session: SessionDep, month: str | None = None, date_from: str | None = None,
+    date_to: str | None = None, format: str = "pdf",
+) -> Response:
     if format not in ("csv", "pdf"):
         raise _err(422, "invalid_field", "format must be csv or pdf", field="format")
-    month = _parse_month(month)
-    saved = await _saved_for_month(session, user, month)
-    summary = exports.build_summary(month, saved)
+    start, end, label = _period(month, date_from, date_to)
+    saved = await _saved_for_period(session, user, start, end)
+    summary = exports.build_period_summary(start, end, label, saved)
+    name = f"tradetrack-summary-{label.replace(' to ', '_to_')}"
     if format == "csv":
         return Response(exports.summary_csv(summary), media_type="text/csv; charset=utf-8",
-                        headers=pdf.download_headers(f"tradetrack-summary-{month}.csv"))
-    start, end = exports.month_range(month)
-    in_month = [r for r in saved if r.receipt_date and start <= r.receipt_date <= end and r.currency == "CAD"]
-    business = user.business_name or f"{user.first_name} {user.last_name}"
-    body = await asyncio.to_thread(pdf.render_summary_pdf, summary, in_month, business)
-    return Response(body, media_type="application/pdf", headers=pdf.download_headers(f"tradetrack-summary-{month}.pdf"))
+                        headers=pdf.download_headers(f"{name}.csv"))
+    body = await _summary_pdf(user, summary, _in_period(saved, start, end))
+    return Response(body, media_type="application/pdf", headers=pdf.download_headers(f"{name}.pdf"))
+
+
+@router.get("/export/package")
+async def export_package(
+    user: PremiumUser, session: SessionDep, month: str | None = None, date_from: str | None = None, date_to: str | None = None
+) -> Response:
+    """ZIP for the accountant: summary PDF, receipts CSV and the original file of each receipt.
+    Works without any email provider. Owner-only (rows are filtered by the signed-in user)."""
+    start, end, label = _period(month, date_from, date_to)
+    saved = await _saved_for_period(session, user, start, end)
+    in_period = sorted(_in_period(saved, start, end), key=lambda r: (r.receipt_date, r.id))
+    if len(in_period) > exports.MAX_PACKAGE_RECEIPTS or \
+            sum(r.file_size_bytes or 0 for r in in_period) > exports.MAX_PACKAGE_BYTES:
+        raise _err(413, "package_too_large",
+                   "That period has too many receipts or files for one package. Choose a shorter period "
+                   "(for example one month) and download it in parts.")
+    summary = exports.build_period_summary(start, end, label, saved)
+    originals: dict[str, bytes] = {}
+    for r in in_period:
+        data = await storage.get_file(session, r)
+        if data is not None:
+            originals[exports.original_name(r)] = data
+    pdf_bytes = await _summary_pdf(user, summary, in_period)
+    body = await asyncio.to_thread(exports.build_package, pdf_bytes, exports.receipts_csv(in_period), originals)
+    name = f"tradetrack-accountant-package-{label.replace(' to ', '_to_')}.zip"
+    return Response(body, media_type="application/zip", headers=pdf.download_headers(name))
 
 
 @router.post("/export/email")
@@ -293,22 +342,19 @@ async def email_to_accountant(body: EmailExportRequest, user: PremiumUser, sessi
         raise _err(400, "no_accountant_email", "Add your accountant's email address in your account settings first.")
     if not settings.smtp_configured:
         raise _err(503, "email_not_configured", "Email sending is not configured on this server, so nothing was sent.")
-    saved = await _saved_for_month(session, user, body.month)
-    summary = exports.build_summary(body.month, saved)
-    start, end = exports.month_range(body.month)
-    in_month = [r for r in saved if r.receipt_date and start <= r.receipt_date <= end]
-    csv_bytes = exports.receipts_csv(sorted(in_month, key=lambda r: (r.receipt_date, r.id)))
-    business = user.business_name or f"{user.first_name} {user.last_name}"
-    pdf_bytes = await asyncio.to_thread(
-        pdf.render_summary_pdf, summary, [r for r in in_month if r.currency == "CAD"], business
-    )
+    start, end, label = _period(body.month, body.date_from, body.date_to)
+    saved = await _saved_for_period(session, user, start, end)
+    summary = exports.build_period_summary(start, end, label, saved)
+    in_period = sorted(_in_period(saved, start, end), key=lambda r: (r.receipt_date, r.id))
+    csv_bytes = exports.receipts_csv(in_period)
+    pdf_bytes = await _summary_pdf(user, summary, in_period)
     try:
-        await mailer.send_month_to_accountant(user.accountant_email, user, body.month, csv_bytes, pdf_bytes)
+        await mailer.send_month_to_accountant(user.accountant_email, user, label, csv_bytes, pdf_bytes)
     except mailer.EmailNotConfigured:
         raise _err(503, "email_not_configured", "Email sending is not configured on this server, so nothing was sent.") from None
     except mailer.EmailSendFailed:
         raise _err(502, "email_send_failed", "The email could not be sent. Nothing was delivered. Please try again later.") from None
-    return {"sent": True, "to": user.accountant_email, "month": body.month, "receipts": len(in_month)}
+    return {"sent": True, "to": user.accountant_email, "month": label, "receipts": len(in_period)}
 
 
 # --------------------------------------------------------------------------- #

@@ -119,10 +119,11 @@ saving; they ask the user to double-check.
 ### Premium-only (`402 {code:"premium_required", message}` on the Free plan)
 | Route | Details |
 |---|---|
-| `GET /api/receipts/summary?month=YYYY-MM` | `{month, currency, count, undated_count, subtotal, tax_total, total, by_category:[{category,count,subtotal,tax_total,total}], by_tax_type:{GST,HST,PST,QST,OTHER}, flagged_count}` — SAVED receipts only. |
+| `GET /api/receipts/summary?month=YYYY-MM` or `?date_from=YYYY-MM-DD&date_to=YYYY-MM-DD` | A period is one month **or** a date range (the client sends quarters and years as ranges; max two years; neither = this month). `{month, label, date_from, date_to, currency, count, undated_count, other_currency_count, subtotal, tax_total, total, by_category:[{category,count,subtotal,tax_total,total}], by_tax_type:{GST,HST,PST,QST,OTHER}, by_province:[{province,count,subtotal,tax_total,total,tax:{GST,HST,PST,QST,OTHER}}], flagged_count}` — SAVED receipts only. `label` is `YYYY-MM` or `start to end`; `month` is the first month of the period (kept for older clients). `by_province[].province` is `"Unknown"` when a receipt has no province. Invalid, half-given, reversed or both-given periods: `422 invalid_field`. |
 | `GET /api/receipts/export?format=csv\|json&month=&date_from=&date_to=&category=` | Attachment download of SAVED receipts, columns/fields match the stored data exactly. |
-| `GET /api/receipts/export/summary?month=YYYY-MM&format=csv\|pdf` | Monthly expense summary download. |
-| `POST /api/receipts/export/email` | `{month:"YYYY-MM"}` → emails CSV + summary PDF to the account's accountant. `400 {code:"no_accountant_email"}`, `503 {code:"email_not_configured"}` (never a fake success). |
+| `GET /api/receipts/export/summary?<period>&format=csv\|pdf` | Expense summary download for the period (same period parameters as `/summary`). |
+| `GET /api/receipts/export/package?<period>` | `application/zip` for the accountant: `README.txt`, `summary.pdf`, `receipts.csv` and `originals/<receipt_id>.<ext>` (the stored original of each receipt in the period; receipts with no stored file have no entry). Works without SMTP. Owner's receipts only. `413 {code:"package_too_large"}` above 300 receipts or 40 MB of originals; choose a shorter period. |
+| `POST /api/receipts/export/email` | `{month}` **or** `{date_from, date_to}` (or neither = this month) → emails CSV + summary PDF to the account's accountant. `400 {code:"no_accountant_email"}`, `503 {code:"email_not_configured"}` (never a fake success). |
 
 ## Billing (`routers/billing.py`)
 | Route | Details |
@@ -167,8 +168,8 @@ Implemented in `server/`. Where the contract was ambiguous or deliberately chang
    info warning `currency_assumed` says so. If the AI omits `tax_total` but reads tax lines, `tax_total` is
    the plain sum of those printed lines.
 6. **Summary.** `by_category[].category` is `"Uncategorized"` when empty. Extra field `other_currency_count`:
-   non-CAD receipts are excluded from the CAD totals. Receipts are placed in the month of their receipt
-   date; undated receipts are only counted in `undated_count` (for the month they were saved).
+   non-CAD receipts are excluded from the CAD totals. Receipts are placed in the period containing their
+   receipt date; undated receipts are only counted in `undated_count` (when they were saved inside the period).
 7. **`POST /api/receipts/export/email`** returns `{sent:true, to, month, receipts}` on success; `502
    email_send_failed` if SMTP fails. Every failure is non-2xx.
 8. **`DELETE /api/me`** with a wrong password returns `403` (not 401, so the UI does not log out). If a live

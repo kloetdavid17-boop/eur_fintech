@@ -60,8 +60,12 @@ def render_receipt_pdf(receipt: Receipt) -> bytes:
 
 
 def render_summary_pdf(summary: dict, receipts: list[Receipt], business: str) -> bytes:
-    y, m = summary["month"].split("-")
-    month_label = date(int(y), int(m), 1).strftime("%B %Y")
+    label = summary.get("label") or summary["month"]
+    if len(label) == 7:  # a single month, YYYY-MM
+        y, m = label.split("-")
+        month_label = date(int(y), int(m), 1).strftime("%B %Y")
+    else:  # a custom range such as a quarter or a year
+        month_label = label
     rows = [
         {
             "date": r.receipt_date.isoformat() if r.receipt_date else "",

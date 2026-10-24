@@ -426,4 +426,8 @@ class ReceiptUpdate(BaseModel):
 
 
 class EmailExportRequest(BaseModel):
-    month: str = PField(pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    """Either ``month`` (YYYY-MM) or ``date_from`` + ``date_to`` (YYYY-MM-DD). Neither = this month."""
+
+    month: str | None = PField(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    date_from: str | None = PField(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
+    date_to: str | None = PField(default=None, pattern=r"^\d{4}-\d{2}-\d{2}$")
