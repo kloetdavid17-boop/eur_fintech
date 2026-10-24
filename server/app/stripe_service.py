@@ -18,6 +18,7 @@ import stripe
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app import email as mailer
 from app.config import settings
 from app.models import Plan, User
 
@@ -158,12 +159,15 @@ async def handle_event(session: AsyncSession, event: dict) -> str:
         )
         if user is None:
             return "ignored (no matching user)"
+        was_premium = user.plan == Plan.PREMIUM.value
         user.stripe_customer_id = obj.get("customer") or user.stripe_customer_id
         user.stripe_subscription_id = obj.get("subscription") or user.stripe_subscription_id
         if obj.get("payment_status") in ("paid", "no_payment_required"):
             user.plan = Plan.PREMIUM.value
             user.subscription_status = "active"
         session.add(user)
+        if not was_premium and user.plan == Plan.PREMIUM.value:
+            await mailer.send_upgrade_confirmation(user, "stripe")  # once: later events see Premium already
         return "checkout completed"
 
     if etype in ("customer.subscription.updated", "customer.subscription.created", "customer.subscription.deleted"):
@@ -181,8 +185,11 @@ async def handle_event(session: AsyncSession, event: dict) -> str:
             user.stripe_customer_id = obj["customer"]
         if etype == "customer.subscription.deleted":
             obj = {**obj, "status": "canceled"}
+        was_premium = user.plan == Plan.PREMIUM.value
         _apply_subscription(user, obj)
         session.add(user)
+        if not was_premium and user.plan == Plan.PREMIUM.value:
+            await mailer.send_upgrade_confirmation(user, "stripe")
         return f"subscription {obj.get('status')}"
 
     if etype == "invoice.payment_failed":

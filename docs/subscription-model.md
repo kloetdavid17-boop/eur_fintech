@@ -44,3 +44,12 @@ Card data never touches TradeTrack.
 ## Testing status
 Demo mode, plan limits, webhook signature rejection and the webhook state transitions are covered by tests
 (`tests/test_billing.py`, with locally signed payloads). **Real Stripe Checkout/portal/cancel calls have not been run.**
+
+## Confirmation emails
+- **Welcome email** when an account is created, and a **Premium order confirmation** when an account becomes Premium
+  (demo upgrade, or the verified Stripe webhook). The confirmation says what was bought (CAD price per month) and is
+  labelled honestly: "demo, no payment taken", "TEST MODE, no real money charged" (key starts `sk_test_`), or a plain
+  Stripe payment note. It is sent once per upgrade, however many webhook events Stripe delivers.
+- Both are best effort. If no provider is configured the API reports `not_configured` and the UI says nothing about an
+  email; if the provider rejects it the API reports `failed` and the UI says it could not be sent. The UI only says an
+  email was sent when the provider accepted it. A failed email never blocks signing up or paying.

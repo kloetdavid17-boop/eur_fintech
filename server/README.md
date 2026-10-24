@@ -36,7 +36,7 @@ app/
   pipeline.py      shared intake: validate -> dedupe -> store -> extract (uploads + inbound email)
   storage.py       original files: database (default) or S3
   exports.py       CSV/JSON/period summary/ZIP      pdf.py  receipt + summary PDFs
-  email.py         SMTP (email to accountant)    stripe_service.py  Stripe helpers
+  email.py         Brevo/SMTP (welcome, order, accountant)    stripe_service.py  Stripe helpers
   models.py        tt_* tables + schemas         database.py  engine, ensure_schema()
   routers/         users, receipts, billing, inbound, config
 docs/ (repo root): database.md, canadian-tax-model.md, ai-extraction.md, email-forwarding.md, subscription-model.md

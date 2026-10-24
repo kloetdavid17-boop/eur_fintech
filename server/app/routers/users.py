@@ -12,6 +12,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlmodel import select
 
+from app import email as mailer
 from app import stripe_service, storage
 from app.auth import (
     CurrentUser,
@@ -26,6 +27,7 @@ from app.database import get_session
 from app.models import (
     DeleteAccount,
     InboundEvent,
+    RegisterOut,
     Receipt,
     UsageEvent,
     User,
@@ -69,8 +71,8 @@ async def _get_by_email(session: AsyncSession, email: str) -> User | None:
     return result.scalar_one_or_none()
 
 
-@router.post("/register", response_model=UserOut, status_code=status.HTTP_201_CREATED)
-async def register(body: UserCreate, response: Response, session: SessionDep) -> UserOut:
+@router.post("/register", response_model=RegisterOut, status_code=status.HTTP_201_CREATED)
+async def register(body: UserCreate, response: Response, session: SessionDep) -> RegisterOut:
     email = str(body.email).strip().lower()
     if await _get_by_email(session, email):
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists")
@@ -92,7 +94,8 @@ async def register(body: UserCreate, response: Response, session: SessionDep) ->
     except IntegrityError:
         raise HTTPException(status.HTTP_409_CONFLICT, "An account with this email already exists") from None
     set_auth_cookie(response, create_token(user))
-    return user_to_out(user)
+    welcome = await mailer.send_welcome(user)  # best effort: never blocks or fails the signup
+    return RegisterOut(**user_to_out(user).model_dump(), welcome_email=welcome)
 
 
 @router.post("/login")

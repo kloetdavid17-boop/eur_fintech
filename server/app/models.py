@@ -280,6 +280,13 @@ class UserOut(BaseModel):
     created_at: datetime
 
 
+class RegisterOut(UserOut):
+    """Sign-up response: the new user plus what happened to the welcome email.
+    "sent" | "failed" | "not_configured". Never "sent" unless the provider accepted it."""
+
+    welcome_email: str
+
+
 def user_to_out(user: User) -> UserOut:
     address = (
         f"{user.forwarding_alias}@{settings.inbound_domain.strip().lower()}"

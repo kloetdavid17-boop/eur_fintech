@@ -296,8 +296,11 @@ export interface RegisterBody {
 }
 
 /** Registration also signs the user in (the server sets the cookie). */
-export async function register(body: RegisterBody): Promise<User> {
-  return (await http.post<User>("/register", body)).data;
+/** What happened to an outgoing email. "sent" only when the provider accepted it. */
+export type EmailStatus = "sent" | "failed" | "not_configured";
+
+export async function register(body: RegisterBody): Promise<User & { welcome_email: EmailStatus }> {
+  return (await http.post<User & { welcome_email: EmailStatus }>("/register", body)).data;
 }
 
 export async function login(email: string, password: string): Promise<void> {
@@ -441,8 +444,8 @@ export async function startCheckout(): Promise<{ url: string }> {
 export async function openBillingPortal(): Promise<{ url: string }> {
   return (await http.post<{ url: string }>("/billing/portal")).data;
 }
-export async function demoUpgrade(): Promise<void> {
-  await http.post("/billing/demo/upgrade");
+export async function demoUpgrade(): Promise<{ confirmation_email: EmailStatus | null }> {
+  return (await http.post<{ confirmation_email: EmailStatus | null }>("/billing/demo/upgrade")).data;
 }
 export async function demoDowngrade(): Promise<void> {
   await http.post("/billing/demo/downgrade");

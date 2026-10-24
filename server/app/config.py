@@ -62,6 +62,10 @@ class Settings(BaseSettings):
     smtp_password: str = ""
     smtp_from: str = "TradeTrack <no-reply@tradetrack.ca>"
     smtp_tls: bool = True
+    # Brevo transactional email over HTTPS (port 443). Use this on hosts that block SMTP ports, such as
+    # Render's free web services. When set it is used instead of SMTP. ZZPAY_SMTP_FROM must be a sender
+    # address verified in Brevo.
+    brevo_api_key: str = ""
 
     # --- Inbound email (Mailgun route) -------------------------------------
     mailgun_signing_key: str = ""
@@ -118,7 +122,8 @@ class Settings(BaseSettings):
 
     @property
     def smtp_configured(self) -> bool:
-        return bool(self.smtp_host.strip())
+        """Outgoing email works: Brevo (HTTPS) or SMTP. The name is kept for the public API field."""
+        return bool(self.brevo_api_key.strip() or self.smtp_host.strip())
 
     @property
     def inbound_email_configured(self) -> bool:

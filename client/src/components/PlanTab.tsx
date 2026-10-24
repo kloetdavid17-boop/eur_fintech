@@ -118,9 +118,13 @@ export function PlanTab({ goTo: _goTo }: { goTo: (t: "plan") => void }) {
         window.location.href = url;
         return;
       }
-      await demoUpgrade();
+      const { confirmation_email: sent } = await demoUpgrade();
       await syncAll();
-    }, mode === "stripe" ? undefined : "Demo upgrade applied: your account is now on Premium. No payment was taken.");
+      setSuccess(
+        "Demo upgrade applied: your account is now on Premium. No payment was taken." +
+          (sent === "sent" ? ` A confirmation email was sent to ${user!.email}.` : sent === "failed" ? " We couldn't send the confirmation email." : "")
+      );
+    });
 
   const portal = () =>
     run(async () => {

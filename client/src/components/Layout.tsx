@@ -4,11 +4,16 @@ import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { PiList, PiX } from "react-icons/pi";
 import { useAuth } from "../auth";
+import { Alert } from "./Alert";
 import { Button } from "./Button";
 import { Logo } from "./Logo";
 
 export function Layout() {
-  const { user, loading, openAuthModal, logout } = useAuth();
+  const { user, loading, openAuthModal, logout, notice, clearNotice } = useAuth();
+  // A new notice (for example "confirmation email sent") must be seen: bring the top of the page into view.
+  useEffect(() => {
+    if (notice) window.scrollTo({ top: 0 });
+  }, [notice]);
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -100,6 +105,15 @@ export function Layout() {
       </header>
 
       <main id="main" className="mx-auto w-full max-w-5xl flex-1 px-4 py-6">
+        {notice ? (
+          <Alert
+            kind={notice.kind}
+            className="mb-4"
+            action={<Button size="sm" variant="secondary" onClick={clearNotice}>Dismiss</Button>}
+          >
+            {notice.text}
+          </Alert>
+        ) : null}
         <Outlet />
       </main>
 

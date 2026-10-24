@@ -29,6 +29,8 @@ interface AuthState {
   logout: () => Promise<void>;
   refresh: () => Promise<api.User | null>;
   setUser: (user: api.User | null) => void;
+  notice: { kind: "success" | "warning"; text: string } | null;
+  clearNotice: () => void;
   modal: AuthModalState;
   openAuthModal: (mode?: AuthMode, opts?: { reason?: string; onSuccess?: (user: api.User) => void }) => void;
   closeAuthModal: () => void;
@@ -43,6 +45,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<api.User | null>(null);
   const [loading, setLoading] = useState(true);
   const [modal, setModal] = useState<AuthModalState>(CLOSED);
+  const [notice, setNotice] = useState<AuthState["notice"]>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -81,8 +84,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const register = useCallback(async (body: api.RegisterBody) => {
     // The server signs the new user in (sets the cookie) and returns the account.
-    const me = await api.register(body);
+    const { welcome_email: welcome, ...me } = await api.register(body);
     setUser(me);
+    // Only say an email was sent when the server says the provider accepted it.
+    if (welcome === "sent")
+      setNotice({
+        kind: "success",
+        text: `Your account is ready. We sent a confirmation email to ${me.email}. If you don't see it, check your spam folder.`,
+      });
+    else if (welcome === "failed")
+      setNotice({ kind: "warning", text: "Your account is ready, but we couldn't send the confirmation email." });
     return me;
   }, []);
 
@@ -104,12 +115,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       logout,
       refresh,
       setUser,
+      notice,
+      clearNotice: () => setNotice(null),
       modal,
       openAuthModal: (mode = "login", opts = {}) => setModal({ open: true, mode, ...opts }),
       closeAuthModal: () => setModal(CLOSED),
       setAuthMode: (mode) => setModal((m) => ({ ...m, mode })),
     }),
-    [user, loading, login, register, logout, refresh, modal]
+    [user, loading, login, register, logout, refresh, notice, modal]
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

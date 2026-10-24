@@ -51,7 +51,7 @@ taken** — the UI must label it as a demo). `file_storage` is `"s3"` or `"datab
 
 | Route | Body → Response |
 |---|---|
-| `POST /api/register` | `{email, first_name, last_name, password(min 8), business_name?, province?, accountant_email?}` → `201 UserOut`, **sets the auth cookie** (already signed in). `409` if email exists. |
+| `POST /api/register` | `{email, first_name, last_name, password(min 8), business_name?, province?, accountant_email?}` → `201 UserOut + welcome_email`, **sets the auth cookie** (already signed in). `welcome_email` is `"sent"` (the email provider accepted the welcome email), `"failed"` or `"not_configured"`; it never blocks or fails the signup. `409` if email exists. |
 | `POST /api/login` | form `username=<email>&password=` (`application/x-www-form-urlencoded`) → `{access_token, token_type}`, sets cookie. `401` on bad credentials. `429` after repeated failures. |
 | `POST /api/logout` | → `{detail}` |
 | `GET /api/me` | → `UserOut` (`401` when signed out) |
@@ -131,7 +131,7 @@ saving; they ask the user to double-check.
 | `GET /api/billing/status` | `{plan, subscription_status, mode:"stripe"\|"demo", can_manage, current_period_end|null, cancel_at_period_end}` |
 | `POST /api/billing/checkout` | `mode=stripe` → `{url}` (redirect the browser to Stripe Checkout). In demo mode → `409 {code:"billing_demo_mode"}`. |
 | `POST /api/billing/portal` | `mode=stripe` → `{url}` (Stripe customer portal: cancel / payment method). |
-| `POST /api/billing/demo/upgrade`, `/demo/downgrade` | Only when `mode=demo` (else `404`). Flips the plan on the server. **No payment is taken** — label it as a demo in the UI. |
+| `POST /api/billing/demo/upgrade`, `/demo/downgrade` | Only when `mode=demo` (else `404`). Flips the plan on the server. **No payment is taken** — label it as a demo in the UI. `/demo/upgrade` also returns `confirmation_email`: `"sent"`, `"failed"`, `"not_configured"`, or `null` when the account was already Premium. |
 | `POST /api/billing/webhook` | Stripe → server only. Signature verified. Not for the frontend. |
 
 After returning from Stripe Checkout (`/dashboard?billing=success`) the plan changes via webhook, so

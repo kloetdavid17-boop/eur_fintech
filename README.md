@@ -62,7 +62,7 @@ receipts clearly labelled as **sample** data). Sign up a normal account to see t
 | AI receipt reading and category suggestion (OpenAI) | **Needs `ZZPAY_OPENAI_API_KEY`.** Without it, uploads are kept and you type the details by hand; the app says so. The live OpenAI call has not been run. |
 | Subscription payments (Stripe) | **Needs three Stripe settings**, otherwise a labelled **demo** upgrade that takes no payment. Live Stripe calls have not been run. |
 | Email forwarding (Mailgun) | **Needs a Mailgun domain and signing key.** Signature, replay and ownership checks are tested with locally signed requests; a real Mailgun delivery has not been run. |
-| Email to accountant (SMTP) | **Needs SMTP settings**; otherwise the endpoint returns "not configured". Tested with a mocked mail server. |
+| Outgoing email (welcome email, Premium order confirmation, email to accountant) | **Needs `ZZPAY_BREVO_API_KEY` (HTTPS, works on Render's free plan) or SMTP settings**; otherwise nothing is sent and the UI says so. Tested with a mocked provider and a local SMTP catcher; no real Brevo delivery has been tested. |
 | File storage | Originals are stored in the database by default; an S3-compatible bucket is optional. The S3 path is tested only with a mock. |
 | Accounting-platform integrations (QuickBooks, Wave, Xero) | **Not built.** CSV, JSON and PDF exports and "email to accountant" are the working hand-off. |
 

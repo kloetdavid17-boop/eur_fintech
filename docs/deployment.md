@@ -34,7 +34,8 @@ Environment variables (all optional ones can be added later; the app reports wha
 | `ZZPAY_OPENAI_API_KEY` | For AI reading | Without it, receipts are kept and filled in by hand. Optional `ZZPAY_OPENAI_MODEL` (default `gpt-4o-mini`). |
 | `ZZPAY_STRIPE_SECRET_KEY`, `ZZPAY_STRIPE_PRICE_ID`, `ZZPAY_STRIPE_WEBHOOK_SECRET` | For real payments | Without them: labelled demo upgrade. Guide: [subscription-model.md](subscription-model.md). |
 | `ZZPAY_MAILGUN_SIGNING_KEY`, `ZZPAY_INBOUND_DOMAIN` | For email forwarding | Guide: [email-forwarding.md](email-forwarding.md). |
-| `ZZPAY_SMTP_HOST` (+ `_PORT`, `_USER`, `_PASSWORD`, `_FROM`, `_TLS`) | For "email to accountant" | |
+| `ZZPAY_BREVO_API_KEY` + `ZZPAY_SMTP_FROM` | For the welcome email, the Premium order confirmation and "email to accountant". **Use this on Render's free plan**, which blocks outgoing SMTP ports 25, 465 and 587. `ZZPAY_SMTP_FROM` must be a sender address verified in Brevo, e.g. `TradeTrack <you@gmail.com>` | |
+| `ZZPAY_SMTP_HOST` (+ `_PORT`, `_USER`, `_PASSWORD`, `_FROM`, `_TLS`) | Alternative to Brevo when the host allows SMTP | |
 | `ZZPAY_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`, `_REGION` | Optional | Store originals in a private bucket instead of the database. |
 | `ZZPAY_SEED_DEMO=true`, `ZZPAY_DEMO_PASSWORD` | Optional | Creates `demo@tradetrack.ca` with sample receipts. Handy for a grading demo; it uses a publicly known default password unless you set one. |
 

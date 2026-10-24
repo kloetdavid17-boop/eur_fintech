@@ -12,6 +12,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import email as mailer
 from app import stripe_service
 from app.auth import CurrentUser
 from app.config import settings
@@ -87,12 +88,16 @@ def _require_demo() -> None:
 @router.post("/demo/upgrade")
 async def demo_upgrade(user: CurrentUser, session: SessionDep) -> dict:
     _require_demo()
+    was_premium = user.plan == Plan.PREMIUM.value
     user.plan = Plan.PREMIUM.value
     user.subscription_status = "demo"
     user.cancel_at_period_end = False
     session.add(user)
     await session.flush()
-    return _status_payload(user)
+    out = _status_payload(user)
+    # "sent" | "failed" | "not_configured" | null (already Premium, nothing to confirm)
+    out["confirmation_email"] = None if was_premium else await mailer.send_upgrade_confirmation(user, "demo")
+    return out
 
 
 @router.post("/demo/downgrade")
