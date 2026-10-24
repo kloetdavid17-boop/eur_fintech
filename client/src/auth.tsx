@@ -31,6 +31,7 @@ interface AuthState {
   setUser: (user: api.User | null) => void;
   notice: { kind: "success" | "warning"; text: string } | null;
   clearNotice: () => void;
+  setNotice: (n: { kind: "success" | "warning"; text: string } | null) => void;
   modal: AuthModalState;
   openAuthModal: (mode?: AuthMode, opts?: { reason?: string; onSuccess?: (user: api.User) => void }) => void;
   closeAuthModal: () => void;
@@ -117,6 +118,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setUser,
       notice,
       clearNotice: () => setNotice(null),
+      setNotice,
       modal,
       openAuthModal: (mode = "login", opts = {}) => setModal({ open: true, mode, ...opts }),
       closeAuthModal: () => setModal(CLOSED),

@@ -53,3 +53,10 @@ Demo mode, plan limits, webhook signature rejection and the webhook state transi
 - Both are best effort. If no provider is configured the API reports `not_configured` and the UI says nothing about an
   email; if the provider rejects it the API reports `failed` and the UI says it could not be sent. The UI only says an
   email was sent when the provider accepted it. A failed email never blocks signing up or paying.
+
+## Upgrading from the main page
+The Premium card on the main page has an upgrade button (`UpgradeButton`), so nobody has to find the dashboard first.
+Signed-in Free users go straight on: Stripe Checkout when billing is in Stripe mode, otherwise the labelled demo
+upgrade. A signed-out visitor sees the sign-up form first (the page says so) and then continues into the upgrade.
+Premium users see a link to their dashboard instead. The server decides the mode (`/api/config`), and the plan only
+changes on the server (demo endpoint, or the verified Stripe webhook).

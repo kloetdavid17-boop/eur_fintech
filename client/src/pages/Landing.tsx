@@ -9,6 +9,7 @@ import { Alert } from "../components/Alert";
 import { Button, buttonClasses } from "../components/Button";
 import { Card } from "../components/Card";
 import { PlanCards, FeatureMatrix } from "../components/PlanCards";
+import { UpgradeButton } from "../components/UpgradeButton";
 import { SampleReceiptDemo } from "../components/SampleReceiptDemo";
 import { Spinner } from "../components/Spinner";
 import { UploadZone } from "../components/UploadZone";
@@ -251,7 +252,19 @@ export function Landing() {
         </h2>
         {config ? (
           <>
-            <PlanCards config={config} currentPlan={user?.plan} />
+            <PlanCards
+              config={config}
+              currentPlan={user?.plan}
+              renderAction={(plan) =>
+                plan.id === "PREMIUM" ? (
+                  <UpgradeButton />
+                ) : user ? null : (
+                  <Button className="w-full" variant="secondary" onClick={() => openAuthModal("register")}>
+                    Start free
+                  </Button>
+                )
+              }
+            />
             <details className="rounded-xl border border-slate-200 bg-white p-3">
               <summary className="cursor-pointer text-sm font-semibold text-brand">Compare features</summary>
               <div className="mt-3">
