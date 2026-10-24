@@ -112,3 +112,10 @@ async def test_receipt_id_collision_retry(client, monkeypatch):
     monkeypatch.setattr(pipeline, "_random_id", lambda year: next(seq))
     second = await upload(client, png_bytes(2))
     assert second["id"] == "TT-2026-ZZZZZZ"
+
+
+def test_extraction_prompt_covers_discounts():
+    from app.extraction import SYSTEM_PROMPT
+
+    assert "discounts" in SYSTEM_PROMPT and "POSITIVE" in SYSTEM_PROMPT
+    assert "Do not list those lines in" in SYSTEM_PROMPT

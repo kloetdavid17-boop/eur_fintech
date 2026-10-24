@@ -217,6 +217,10 @@ Rules:
   totals or tax amounts).
 - Amounts are strings with a dot as decimal separator and no currency symbol, e.g. "13.00".
 - Dates are "YYYY-MM-DD". Times are "HH:MM" (24 hour).
+- discounts: if the document prints discount, coupon, loyalty, promo or "% off" lines, put their
+  total as a POSITIVE amount (e.g. a printed "-2.85" becomes "2.85"). Do not list those lines in
+  line_items. Use null only if no discount is printed.
+- subtotal is the amount exactly as printed on the document, before any discount and before tax.
 - Tax lines: one entry per tax shown, with the label exactly as printed, the amount, and
   tax_type one of {", ".join(TAX_TYPES)} (use OTHER if you cannot tell).
 - province: two-letter code ({", ".join(sorted(PROVINCE_CODES))}) only if the document shows
