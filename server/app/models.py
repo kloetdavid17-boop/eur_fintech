@@ -228,6 +228,15 @@ class InboundToken(SQLModel, table=True):
 # --------------------------------------------------------------------------- #
 # Schemas - users
 # --------------------------------------------------------------------------- #
+class ForgotPassword(BaseModel):
+    email: EmailStr
+
+
+class ResetPassword(BaseModel):
+    token: str = PField(min_length=10, max_length=2000)
+    password: str = PField(min_length=8, max_length=128)
+
+
 class UserCreate(BaseModel):
     email: EmailStr
     first_name: str = PField(min_length=1, max_length=80)

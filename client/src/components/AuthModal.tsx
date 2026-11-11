@@ -1,6 +1,6 @@
 // Sign-in / create-account modal. Opened from anywhere via useAuth().openAuthModal().
 import { useState, type FormEvent } from "react";
-import { apiErrorInfo } from "../api";
+import { apiErrorInfo, forgotPassword } from "../api";
 import { useAuth } from "../auth";
 import { useConfig } from "../hooks/useConfig";
 import { Alert } from "./Alert";
@@ -48,6 +48,9 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgot, setForgot] = useState(false);
+
+  if (forgot) return <ForgotForm initialEmail={email} onBack={() => setForgot(false)} />;
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -86,6 +89,11 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
         value={password}
         onChange={(e) => setPassword(e.target.value)}
       />
+      <div className="-mt-2 text-right">
+        <button type="button" className="text-sm font-semibold text-brand underline" onClick={() => setForgot(true)}>
+          Forgot your password?
+        </button>
+      </div>
       <div aria-live="polite">{error ? <Alert kind="error">{error}</Alert> : null}</div>
       <Button type="submit" className="w-full" disabled={busy}>
         {busy ? <Spinner label="Signing in…" /> : "Sign in"}
@@ -94,6 +102,65 @@ function LoginForm({ onSwitch }: { onSwitch: () => void }) {
         New to TradeTrack?{" "}
         <button type="button" className="font-semibold text-brand underline" onClick={onSwitch}>
           Create a free account
+        </button>
+      </p>
+    </form>
+  );
+}
+
+function ForgotForm({ initialEmail, onBack }: { initialEmail: string; onBack: () => void }) {
+  const [email, setEmail] = useState(initialEmail);
+  const [error, setError] = useState<string | null>(null);
+  const [sent, setSent] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    setError(null);
+    setBusy(true);
+    try {
+      await forgotPassword(email.trim());
+      setSent(true);
+    } catch (err) {
+      const info = apiErrorInfo(err);
+      setError(
+        info.status === 429
+          ? "Too many requests. Please wait a few minutes and try again."
+          : info.code === "email_not_configured"
+            ? "Password reset email isn't set up on this server yet, so we can't send a link."
+            : info.message
+      );
+    }
+    setBusy(false);
+  }
+
+  if (sent) {
+    return (
+      <div className="space-y-4">
+        <Alert kind="success">
+          If an account exists for <strong>{email.trim()}</strong>, we've sent a link to choose a new password. It
+          works once and expires in 60 minutes. Check your spam folder if it doesn't arrive.
+        </Alert>
+        <Button type="button" variant="secondary" className="w-full" onClick={onBack}>
+          Back to sign in
+        </Button>
+      </div>
+    );
+  }
+
+  return (
+    <form onSubmit={submit} className="space-y-4">
+      <p className="text-sm text-slate-700">
+        Enter the email you signed up with and we'll send you a link to choose a new password.
+      </p>
+      <Input label="Email" type="email" autoComplete="email" required value={email} onChange={(e) => setEmail(e.target.value)} />
+      <div aria-live="polite">{error ? <Alert kind="error">{error}</Alert> : null}</div>
+      <Button type="submit" className="w-full" disabled={busy}>
+        {busy ? <Spinner label="Sending…" /> : "Email me a reset link"}
+      </Button>
+      <p className="text-center text-sm text-slate-700">
+        <button type="button" className="font-semibold text-brand underline" onClick={onBack}>
+          Back to sign in
         </button>
       </p>
     </form>

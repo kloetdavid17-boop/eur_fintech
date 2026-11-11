@@ -17,18 +17,22 @@ from app import stripe_service, storage
 from app.auth import (
     CurrentUser,
     clear_auth_cookie,
+    create_reset_token,
     create_token,
     hash_password,
     set_auth_cookie,
+    user_from_reset_token,
     verify_password,
 )
 from app.config import settings
 from app.database import get_session
 from app.models import (
     DeleteAccount,
+    ForgotPassword,
     InboundEvent,
     RegisterOut,
     Receipt,
+    ResetPassword,
     UsageEvent,
     User,
     UserCreate,
@@ -124,6 +128,47 @@ async def login(
     token = create_token(user)
     set_auth_cookie(response, token)
     return {"access_token": token, "token_type": "bearer"}
+
+
+@router.post("/password/forgot")
+async def forgot_password(body: ForgotPassword, request: Request, session: SessionDep) -> dict:
+    """Email a reset link to the account owner. The answer is the same whether or not the email has an
+    account, so this cannot be used to find out who is registered."""
+    if not settings.smtp_configured:
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            {"code": "email_not_configured", "message": "Password reset email is not set up on this server yet."},
+        )
+    email = str(body.email).strip().lower()
+    window = 900
+    if limiter.check_and_hit(f"forgot:{email}", 3, window) or \
+            limiter.check_and_hit(f"forgot-ip:{_client_ip(request)}", 10, window):
+        raise _too_many()
+    user = await _get_by_email(session, email)
+    if user is not None:
+        await mailer.send_password_reset(user, create_reset_token(user))
+    return {"detail": "If an account exists for that email, a reset link is on its way."}
+
+
+@router.post("/password/reset")
+async def reset_password(body: ResetPassword, request: Request, session: SessionDep) -> dict:
+    """Set a new password from an emailed link. A link works once: changing the password invalidates it."""
+    ip_key = f"reset-ip:{_client_ip(request)}"
+    if limiter.is_limited(ip_key, 20, 900):
+        raise _too_many()
+    user = await user_from_reset_token(body.token, session)
+    if user is None:
+        limiter.hit(ip_key, 900)
+        raise HTTPException(
+            status.HTTP_400_BAD_REQUEST,
+            {"code": "invalid_reset_link", "message": "This reset link is invalid or has expired. Please request a new one."},
+        )
+    user.password_hash = hash_password(body.password)
+    session.add(user)
+    await session.flush()
+    limiter.reset(f"login:{user.email}")
+    await mailer.send_password_changed(user)
+    return {"detail": "Your password has been changed. You can sign in now."}
 
 
 @router.post("/logout")

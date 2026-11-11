@@ -21,6 +21,7 @@ from httpx import ASGITransport, AsyncClient
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.pool import StaticPool
 
+from app import email as mailer
 from app import extraction
 from app.config import settings
 from app.database import ensure_schema, get_session
@@ -171,3 +172,22 @@ async def upload(c, data=None, name="receipt.png", mime="image/png", expect=200)
 async def upgrade(c):
     r = await c.post("/api/billing/demo/upgrade")
     assert r.status_code == 200, r.text
+
+
+@pytest.fixture
+def brevo(monkeypatch):
+    """Configure Brevo and capture what would be POSTed. Returns the list of captured calls."""
+    class Calls(list):
+        state = {"status": 201}
+
+    calls = Calls()
+    state = calls.state
+
+    async def fake_post(url, headers, payload, timeout):
+        calls.append({"url": url, "headers": headers, "payload": payload})
+        return state["status"]
+
+    monkeypatch.setattr(settings, "brevo_api_key", "xkeysib-test-key")
+    monkeypatch.setattr(settings, "smtp_from", "TradeTrack <sender@example.com>")
+    monkeypatch.setattr(mailer, "_post_json", fake_post)
+    return calls

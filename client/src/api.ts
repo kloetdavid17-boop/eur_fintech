@@ -309,6 +309,14 @@ export async function login(email: string, password: string): Promise<void> {
   await http.post("/login", form, { headers: { "Content-Type": "application/x-www-form-urlencoded" } });
 }
 
+export async function forgotPassword(email: string): Promise<void> {
+  await http.post("/password/forgot", { email });
+}
+
+export async function resetPassword(token: string, password: string): Promise<void> {
+  await http.post("/password/reset", { token, password });
+}
+
 export async function logout(): Promise<void> {
   await http.post("/logout");
 }

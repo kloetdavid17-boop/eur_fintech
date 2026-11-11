@@ -217,3 +217,37 @@ async def send_upgrade_confirmation(user: User, mode: str) -> str:
     ]
     msg = _message(user.email, "Your TradeTrack Premium confirmation", "\n".join(lines))
     return await _best_effort(msg, "Order confirmation")
+
+
+# --------------------------------------------------------------------------- #
+# Password reset
+# --------------------------------------------------------------------------- #
+async def send_password_reset(user: User, token: str) -> str:
+    """Reset-link email. Returns "sent", "failed" or "not_configured". Never raises."""
+    from app.auth import RESET_TTL_MINUTES
+
+    name = _clean(user.first_name) or "there"
+    link = f"{settings.frontend_origin}/reset-password?token={token}"
+    text = (
+        f"Hi {name},\n\n"
+        "Someone asked to reset the password of your TradeTrack account. To choose a new password, open this "
+        f"link (it works once and expires in {RESET_TTL_MINUTES} minutes):\n\n"
+        f"{link}\n\n"
+        "If you did not ask for this, ignore this email. Your password has not changed and nobody can use "
+        "this link without access to your inbox.\n\n"
+        "TradeTrack. Less paperwork. More business."
+    )
+    return await _best_effort(_message(user.email, "Reset your TradeTrack password", text), "Password reset")
+
+
+async def send_password_changed(user: User) -> str:
+    """Security notice after a password change. Never raises."""
+    name = _clean(user.first_name) or "there"
+    text = (
+        f"Hi {name},\n\n"
+        f"The password of your TradeTrack account ({user.email}) was just changed.\n\n"
+        "If this was you, there is nothing more to do. If it was not, reset your password again from the "
+        f"sign-in page: {settings.frontend_origin}\n\n"
+        "TradeTrack. Less paperwork. More business."
+    )
+    return await _best_effort(_message(user.email, "Your TradeTrack password was changed", text), "Password changed")

@@ -53,6 +53,8 @@ taken** — the UI must label it as a demo). `file_storage` is `"s3"` or `"datab
 |---|---|
 | `POST /api/register` | `{email, first_name, last_name, password(min 8), business_name?, province?, accountant_email?}` → `201 UserOut + welcome_email`, **sets the auth cookie** (already signed in). `welcome_email` is `"sent"` (the email provider accepted the welcome email), `"failed"` or `"not_configured"`; it never blocks or fails the signup. `409` if email exists. |
 | `POST /api/login` | form `username=<email>&password=` (`application/x-www-form-urlencoded`) → `{access_token, token_type}`, sets cookie. `401` on bad credentials. `429` after repeated failures. |
+| `POST /api/password/forgot` | `{email}` → `{detail}`. Emails a reset link (valid 60 minutes, single use) to the account owner. The answer is identical whether or not the email has an account. `503 email_not_configured` when no email provider is set; `429` after 3 requests per email or 10 per IP in 15 minutes. |
+| `POST /api/password/reset` | `{token, password}` (8 to 128 characters) → `{detail}`. Sets the new password and emails a "password changed" notice. `400 invalid_reset_link` if the token is wrong, expired or already used. Does not sign the user in. |
 | `POST /api/logout` | → `{detail}` |
 | `GET /api/me` | → `UserOut` (`401` when signed out) |
 | `PUT /api/me` | `{first_name?, last_name?, business_name?, province?, accountant_email?, gst_hst_registered?, gst_hst_number?}` → `UserOut` |

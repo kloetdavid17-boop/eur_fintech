@@ -11,25 +11,6 @@ from .billing_helpers import stripe_header
 from .conftest import register
 
 
-@pytest.fixture
-def brevo(monkeypatch):
-    """Configure Brevo and capture what would be POSTed. Returns the list of captured calls."""
-    class Calls(list):
-        state = {"status": 201}
-
-    calls = Calls()
-    state = calls.state
-
-    async def fake_post(url, headers, payload, timeout):
-        calls.append({"url": url, "headers": headers, "payload": payload})
-        return state["status"]
-
-    monkeypatch.setattr(settings, "brevo_api_key", "xkeysib-test-key")
-    monkeypatch.setattr(settings, "smtp_from", "TradeTrack <sender@example.com>")
-    monkeypatch.setattr(mailer, "_post_json", fake_post)
-    return calls
-
-
 async def test_register_without_email_provider_says_not_configured(client):
     me = await register(client, "new@example.com")
     assert me["welcome_email"] == "not_configured"

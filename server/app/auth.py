@@ -10,6 +10,9 @@ from datetime import datetime, timedelta, timezone
 from typing import Annotated
 from uuid import UUID
 
+import hashlib
+import hmac
+
 import jwt
 from fastapi import Depends, HTTPException, Request, Response, status
 from passlib.context import CryptContext
@@ -50,6 +53,47 @@ def _decode_token(token: str) -> dict | None:
         return jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
     except jwt.PyJWTError:
         return None
+
+
+# --- password-reset tokens --------------------------------------------------- #
+RESET_TTL_MINUTES = 60
+
+
+def _reset_key() -> str:
+    """Signing key for reset links, derived so a session JWT can never be used as a reset token
+    (and a reset token can never be used as a session: it is signed with a different key)."""
+    return hmac.new(settings.jwt_secret.encode(), b"tradetrack-password-reset", hashlib.sha256).hexdigest()
+
+
+def _password_fingerprint(user: User) -> str:
+    """Changes whenever the password changes, which makes a reset link single-use."""
+    return hashlib.sha256(user.password_hash.encode()).hexdigest()[:24]
+
+
+def create_reset_token(user: User) -> str:
+    now = datetime.now(timezone.utc)
+    payload = {
+        "sub": str(user.id),
+        "purpose": "password-reset",
+        "fp": _password_fingerprint(user),
+        "iat": now,
+        "exp": now + timedelta(minutes=RESET_TTL_MINUTES),
+    }
+    return jwt.encode(payload, _reset_key(), algorithm=settings.jwt_algorithm)
+
+
+async def user_from_reset_token(token: str, session: AsyncSession) -> User | None:
+    """The account a valid, unexpired, unused reset token belongs to, else None."""
+    try:
+        payload = jwt.decode(token, _reset_key(), algorithms=[settings.jwt_algorithm])
+        if payload.get("purpose") != "password-reset":
+            return None
+        user = await session.get(User, UUID(str(payload["sub"])))
+    except (jwt.PyJWTError, ValueError, KeyError):
+        return None
+    if user is None or not hmac.compare_digest(payload.get("fp", ""), _password_fingerprint(user)):
+        return None
+    return user
 
 
 # --- current user dependency ------------------------------------------------ #
