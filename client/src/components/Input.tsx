@@ -1,4 +1,6 @@
-import { useId, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+import { useId, useState, type InputHTMLAttributes, type SelectHTMLAttributes, type TextareaHTMLAttributes } from "react";
+
+import { PiEye, PiEyeSlash } from "react-icons/pi";
 
 const FIELD =
   "w-full rounded-lg border bg-white px-3 py-2.5 text-base text-slate-900 placeholder:text-slate-500 sm:text-sm disabled:bg-slate-100";
@@ -46,18 +48,40 @@ interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   error?: string | null;
 }
 
-export function Input({ label, hint, error, id, className = "", ...rest }: InputProps) {
+export function Input({ label, hint, error, id, className = "", type, ...rest }: InputProps) {
   const auto = useId();
   const fid = id ?? auto;
+  const [shown, setShown] = useState(false);
+  const isPassword = type === "password";
+  const field = (
+    <input
+      id={fid}
+      type={isPassword && shown ? "text" : type}
+      aria-invalid={error ? true : undefined}
+      aria-describedby={describe(fid, hint, error)}
+      className={`${FIELD} ${border(error)} ${isPassword ? "pr-11" : ""} ${className}`}
+      {...rest}
+    />
+  );
   return (
     <Wrapper id={fid} label={label} hint={hint} error={error}>
-      <input
-        id={fid}
-        aria-invalid={error ? true : undefined}
-        aria-describedby={describe(fid, hint, error)}
-        className={`${FIELD} ${border(error)} ${className}`}
-        {...rest}
-      />
+      {isPassword ? (
+        // Every password field gets a show/hide toggle so people can check what they typed.
+        <div className="relative">
+          {field}
+          <button
+            type="button"
+            onClick={() => setShown((v) => !v)}
+            aria-label={shown ? "Hide password" : "Show password"}
+            aria-pressed={shown}
+            className="absolute inset-y-0 right-0 flex w-11 items-center justify-center rounded-r-lg text-slate-600 hover:text-slate-900"
+          >
+            {shown ? <PiEyeSlash className="h-5 w-5" aria-hidden="true" /> : <PiEye className="h-5 w-5" aria-hidden="true" />}
+          </button>
+        </div>
+      ) : (
+        field
+      )}
     </Wrapper>
   );
 }
