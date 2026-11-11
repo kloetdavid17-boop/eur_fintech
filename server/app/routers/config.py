@@ -26,7 +26,7 @@ async def get_config() -> dict:
              "monthly_receipt_limit": p.monthly_receipt_limit, "features": p.features}
             for p in plans.get_plans().values()
         ],
-        "feature_matrix": [{"feature": f, "free": a, "premium": b} for f, a, b in plans.FEATURE_MATRIX],
+        "feature_matrix": [{"feature": f, "free": a, "premium": b} for f, a, b in plans.feature_matrix()],
         "categories": EXPENSE_CATEGORIES,
         "provinces": province_list(),
         "upload": {"max_mb": settings.max_upload_mb, "allowed_types": ALLOWED_MIME_TYPES},
@@ -35,6 +35,7 @@ async def get_config() -> dict:
             "inbound_email_configured": settings.inbound_email_configured,
             "inbound_domain": settings.inbound_domain.strip().lower() if settings.inbound_email_configured else None,
             "billing_mode": settings.billing_mode,
+            "billing_test_mode": settings.billing_test_mode,
             "smtp_configured": settings.smtp_configured,
             "file_storage": settings.file_storage,
         },

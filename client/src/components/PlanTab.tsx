@@ -21,6 +21,7 @@ import { Card } from "./Card";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { FeatureMatrix, PlanCards } from "./PlanCards";
 import { PageSpinner, Spinner } from "./Spinner";
+import { TestCardNote } from "./UpgradeButton";
 import { UsageMeter } from "./UsageMeter";
 
 export function PlanTab({ goTo: _goTo }: { goTo: (t: "plan") => void }) {
@@ -145,9 +146,12 @@ export function PlanTab({ goTo: _goTo }: { goTo: (t: "plan") => void }) {
     const isPremium = plan.id === "PREMIUM";
     if (isPremium && user!.plan === "FREE") {
       return (
-        <Button className="w-full" variant="accent" disabled={busy || polling} onClick={() => void upgrade()}>
-          {busy ? <Spinner label="Working…" /> : mode === "stripe" ? "Upgrade to Premium" : "Try Premium (demo, no payment)"}
-        </Button>
+        <div>
+          <Button className="w-full" variant="accent" disabled={busy || polling} onClick={() => void upgrade()}>
+            {busy ? <Spinner label="Working…" /> : mode === "stripe" ? "Upgrade to Premium" : "Try Premium (demo, no payment)"}
+          </Button>
+          {mode === "stripe" && config!.services.billing_test_mode ? <TestCardNote /> : null}
+        </div>
       );
     }
     if (isPremium && user!.plan === "PREMIUM") {

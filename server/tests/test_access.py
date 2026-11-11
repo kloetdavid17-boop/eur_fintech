@@ -111,7 +111,14 @@ async def test_summary_and_summary_exports(client, two_users, ai):
                  tax_lines=[])
     await _saved(client, ai, 41, receipt_date=None, total="9.00", subtotal="8.00", tax_total="1.00", line_items=[], tax_lines=[])
     s = (await client.get("/api/receipts/summary", params={"month": "2026-10"})).json()
-    assert s["count"] == 3 and s["currency"] == "CAD" and s["undated_count"] == 1
+    assert s["count"] == 3 and s["currency"] == "CAD"
+    # An undated receipt is counted (as undated) only in the month it was SAVED, which is "now".
+    from app import plans
+
+    this_month = plans.period_key()
+    assert s["undated_count"] == (1 if this_month == "2026-10" else 0)
+    now_summary = (await client.get("/api/receipts/summary", params={"month": this_month})).json()
+    assert now_summary["undated_count"] == 1
     assert (s["subtotal"], s["tax_total"], s["total"]) == ("160.00", "20.80", "180.80")
     assert s["by_category"][0] == {"category": "Office supplies", "count": 2, "subtotal": "150.00", "tax_total": "19.50", "total": "169.50"}
     assert s["by_tax_type"]["HST"] == "20.80" and s["by_tax_type"]["GST"] == "0.00"

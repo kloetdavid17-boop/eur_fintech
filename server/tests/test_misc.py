@@ -119,3 +119,27 @@ def test_extraction_prompt_covers_discounts():
 
     assert "discounts" in SYSTEM_PROMPT and "POSITIVE" in SYSTEM_PROMPT
     assert "Do not list those lines in" in SYSTEM_PROMPT
+
+
+async def test_forwarding_is_not_advertised_as_working_when_unconfigured(client, monkeypatch):
+    cfg = (await client.get("/api/config")).json()
+    premium = next(p for p in cfg["plans"] if p["id"] == "PREMIUM")
+    assert "Email-forwarding receipt capture (coming soon)" in premium["features"]
+    assert any(r["feature"] == "Email-forwarding receipt capture (coming soon)" for r in cfg["feature_matrix"])
+
+    monkeypatch.setattr(settings, "inbound_domain", "receipts.example.ca")
+    monkeypatch.setattr(settings, "mailgun_signing_key", "key")
+    cfg = (await client.get("/api/config")).json()
+    premium = next(p for p in cfg["plans"] if p["id"] == "PREMIUM")
+    assert "Email-forwarding receipt capture" in premium["features"]
+    assert not any("coming soon" in f for f in premium["features"])
+
+
+async def test_config_flags_stripe_test_mode(client, monkeypatch):
+    assert (await client.get("/api/config")).json()["services"]["billing_test_mode"] is False  # demo mode
+    monkeypatch.setattr(settings, "stripe_price_id", "price_x")
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_test_abc")
+    s = (await client.get("/api/config")).json()["services"]
+    assert s["billing_mode"] == "stripe" and s["billing_test_mode"] is True
+    monkeypatch.setattr(settings, "stripe_secret_key", "sk_live_abc")
+    assert (await client.get("/api/config")).json()["services"]["billing_test_mode"] is False

@@ -102,6 +102,7 @@ export interface AppConfig {
     inbound_email_configured: boolean;
     inbound_domain: string | null;
     billing_mode: "stripe" | "demo";
+    billing_test_mode: boolean;
     smtp_configured: boolean;
     file_storage: "s3" | "database";
   };

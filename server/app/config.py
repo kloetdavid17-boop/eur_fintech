@@ -145,6 +145,11 @@ class Settings(BaseSettings):
         return bool(self.stripe_secret_key.strip() and self.stripe_price_id.strip())
 
     @property
+    def billing_test_mode(self) -> bool:
+        """True when Stripe is configured with a TEST key (sk_test_...): no real money moves."""
+        return self.stripe_configured and self.stripe_secret_key.strip().startswith("sk_test_")
+
+    @property
     def billing_mode(self) -> str:
         return "stripe" if self.stripe_configured else "demo"
 

@@ -78,3 +78,18 @@ at it, or merge it into `dev`.
 
 The app never modifies or drops older tables, so the original ZZPay data in the same database stays
 intact. The last working ZZPay version is commit `f07486f`; redeploying that commit brings it back.
+
+## Free-plan sleep (Render)
+Render's free web services sleep after about 15 minutes without traffic, and waking takes up to roughly a minute. The
+frontend retries the settings request for about a minute and shows "The server is waking up" instead of an error, but
+the first visitor still waits. Two fixes: (1) ping `https://<backend>/api/health` every 5 minutes with a free uptime
+monitor (e.g. UptimeRobot), or (2) move the backend to a paid instance (also removes the outgoing-SMTP block).
+
+## Test mode notice
+When `ZZPAY_STRIPE_SECRET_KEY` starts with `sk_test_`, `/api/config` reports `services.billing_test_mode: true` and the
+upgrade buttons show the Stripe test card (4242 4242 4242 4242) so testers can pay without being charged. A live key
+hides the note automatically.
+
+## Email forwarding wording
+Until `ZZPAY_INBOUND_DOMAIN` and `ZZPAY_MAILGUN_SIGNING_KEY` are set, the Premium feature list and comparison table
+say "Email-forwarding receipt capture (coming soon)" and the how-it-works step does not mention forwarding.

@@ -20,7 +20,7 @@ const STEPS = [
   {
     icon: PiCamera,
     title: "1. Capture",
-    text: "Snap a photo, upload a PDF, or forward the emailed receipt (Premium).",
+    text: "Snap a photo or upload a PDF.",
   },
   {
     icon: PiSparkle,
@@ -36,7 +36,7 @@ const STEPS = [
 
 export function Landing() {
   const { user, loading, openAuthModal } = useAuth();
-  const { data: config, isError: configError } = useConfig();
+  const { data: config, isError: configError, failureCount } = useConfig();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -112,6 +112,12 @@ export function Landing() {
           </p>
         </div>
 
+        {!config && !configError && failureCount > 0 ? (
+          <Alert kind="info" title="The server is waking up">
+            TradeTrack runs on a free hosting plan that sleeps when idle. This can take up to a minute the first
+            time; the page will update by itself.
+          </Alert>
+        ) : null}
         {configError ? (
           <Alert kind="warning" title="Couldn't load settings from the server">
             You can still try uploading. If something fails, refresh the page in a moment.
@@ -200,7 +206,11 @@ export function Landing() {
               <Card className="h-full p-4">
                 <Icon className="h-7 w-7 text-brand" aria-hidden="true" />
                 <h3 className="mt-2 font-semibold text-ink">{title}</h3>
-                <p className="mt-1 text-sm text-slate-700">{text}</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {title.startsWith("1.") && config?.services.inbound_email_configured
+                    ? "Snap a photo, upload a PDF, or forward the emailed receipt (Premium)."
+                    : text}
+                </p>
               </Card>
             </li>
           ))}

@@ -44,7 +44,7 @@ Status codes the UI must handle: `401` (not signed in), `402` (plan limit / prem
   }
 }
 ```
-`billing_mode` is `"stripe"` (real Stripe Checkout) or `"demo"` (simulated upgrade, **no payment is
+`billing_test_mode` is `true` when Stripe runs with a test key (no real charge); the UI then tells visitors which test card to use. `billing_mode` is `"stripe"` (real Stripe Checkout) or `"demo"` (simulated upgrade, **no payment is
 taken** — the UI must label it as a demo). `file_storage` is `"s3"` or `"database"`.
 
 ## Account (`users.py`)

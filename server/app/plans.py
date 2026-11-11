@@ -26,6 +26,14 @@ class PlanDef:
     features: list[str]
 
 
+FORWARDING = "Email-forwarding receipt capture"
+
+
+def forwarding_label() -> str:
+    """Never advertise email forwarding as working when it is not configured on this server."""
+    return FORWARDING if settings.inbound_email_configured else f"{FORWARDING} (coming soon)"
+
+
 def get_plans() -> dict[str, PlanDef]:
     price = str(Decimal(settings.premium_price_cad).quantize(Decimal("0.01")))
     return {
@@ -50,7 +58,7 @@ def get_plans() -> dict[str, PlanDef]:
             monthly_receipt_limit=None,
             features=[
                 "Unlimited saved receipts",
-                "Email-forwarding receipt capture",
+                forwarding_label(),
                 "Date and amount filters",
                 "Expense summary by month, quarter or year, with tax by province (PDF and CSV)",
                 "Accountant package: summary, receipts CSV and original files in one ZIP",
@@ -62,14 +70,18 @@ def get_plans() -> dict[str, PlanDef]:
 
 
 # (feature label, free, premium) — shown as the comparison table in the UI.
-FEATURE_MATRIX: list[tuple[str, bool, bool]] = [
+def feature_matrix() -> list[tuple[str, bool, bool]]:
+    return [(forwarding_label() if f == FORWARDING else f, a, b) for f, a, b in _FEATURE_MATRIX]
+
+
+_FEATURE_MATRIX: list[tuple[str, bool, bool]] = [
     ("Upload receipts (image or PDF)", True, True),
     ("AI extraction + category suggestion", True, True),
     ("Review, correct and save receipts", True, True),
     ("Original file download and TradeTrack PDF", True, True),
     ("Search by text, category and status", True, True),
     ("Unlimited saved receipts", False, True),
-    ("Email-forwarding receipt capture", False, True),
+    (FORWARDING, False, True),
     ("Date and amount filters", False, True),
     ("Summary by month, quarter or year, with tax by province", False, True),
     ("Accountant package (ZIP with original files)", False, True),

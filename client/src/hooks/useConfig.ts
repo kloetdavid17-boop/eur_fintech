@@ -7,6 +7,9 @@ export function useConfig() {
     queryKey: ["config"],
     queryFn: getConfig,
     staleTime: Infinity,
-    retry: 1,
+    // Render's free plan puts the server to sleep when idle; waking up takes up to about a minute.
+    // Keep trying for roughly that long instead of showing an error straight away.
+    retry: 12,
+    retryDelay: 5000,
   });
 }
