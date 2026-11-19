@@ -8,7 +8,7 @@ import { Card } from "./Card";
 import { PremiumBadge } from "./StatusBadge";
 
 export function priceLabel(plan: PlanInfo): string {
-  return Number(plan.price_cad) > 0 ? `${money(plan.price_cad, "CAD")}/month` : "Free";
+  return `${money(plan.price_cad, "CAD")}/month`; // "$0/month" for Free, so the card does not say "Free Free"
 }
 
 export function limitLabel(plan: PlanInfo): string {

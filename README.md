@@ -13,13 +13,16 @@ credentials](#what-works-and-what-needs-credentials).
 > are AI suggestions you confirm; nothing in the app says an expense is deductible or that tax is
 > recoverable. Check with your accountant.
 
-## The three pages
+## The pages
 
 | Page | Route | What it does |
 |---|---|---|
-| Landing and capture | `/` | Value proposition, receipt upload (file picker, drag and drop, phone camera), how it works, email-forwarding explainer, plans, a clearly labelled sample receipt. |
+| Home | `/` | The pitch for a visitor who is not signed in: value proposition, a clearly labelled sample receipt walk-through (no sign-up), three steps, a price line and one main button, "Create free account". Signed-in users are sent straight to the dashboard. |
+| Pricing | `/pricing` | Free and Premium side by side, the full comparison table, upgrade button and short answers (what counts toward the limit, no card for Free, not tax advice). |
 | Receipt detail | `/receipts/:id` | Extracted merchant, date, line items, taxes (GST/HST/PST/QST), total, suggested category, confidence and warnings, original-file preview. Edit, confirm and save, download, archive, delete. |
-| Account dashboard | `/dashboard` | Receipt history with search and filters, usage for the month, plan and upgrade, email-forwarding setup, exports, profile and privacy. Sign-in and sign-up are modals. |
+| Account dashboard | `/dashboard` | Receipt upload (file picker, drag and drop, phone camera) at the top, receipt history with search and filters, usage for the month, plan and upgrade, email-forwarding setup, exports, profile and privacy. Sign-in and sign-up are modals. |
+
+`/classic` keeps the previous one-page home (upload box, forwarding section and plans on one page) so the two layouts can be compared. It is temporary and can be deleted once one layout is chosen (`pages/LandingClassic.tsx` and its route in `App.tsx`). The version before this change is also saved as the git branch `backup/v1-one-page`.
 
 ## Plans (change them in one place: `server/app/plans.py`)
 

@@ -6,6 +6,8 @@ import { Layout } from "./components/Layout";
 import { RequireAuth } from "./components/RequireAuth";
 import { Dashboard } from "./pages/Dashboard";
 import { Landing } from "./pages/Landing";
+import { LandingClassic } from "./pages/LandingClassic";
+import { Pricing } from "./pages/Pricing";
 import { ResetPassword } from "./pages/ResetPassword";
 import { ReceiptDetail } from "./pages/ReceiptDetail";
 
@@ -31,6 +33,8 @@ export function App() {
               </RequireAuth>
             }
           />
+          <Route path="/pricing" element={<Pricing />} />
+          <Route path="/classic" element={<LandingClassic />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

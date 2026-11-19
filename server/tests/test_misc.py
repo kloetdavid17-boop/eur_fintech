@@ -143,3 +143,14 @@ async def test_config_flags_stripe_test_mode(client, monkeypatch):
     assert s["billing_mode"] == "stripe" and s["billing_test_mode"] is True
     monkeypatch.setattr(settings, "stripe_secret_key", "sk_live_abc")
     assert (await client.get("/api/config")).json()["services"]["billing_test_mode"] is False
+
+
+def test_high_confidence_is_lowered_next_to_a_warning():
+    from app.models import Receipt, effective_confidence
+
+    r = Receipt(extraction_confidence="HIGH", warnings=[{"code": "x", "severity": "info", "message": "m"}])
+    assert effective_confidence(r) == "HIGH"  # an info note does not lower it
+    r.warnings = [{"code": "lines_vs_subtotal", "severity": "warning", "message": "m"}]
+    assert effective_confidence(r) == "MEDIUM"
+    r.extraction_confidence = "LOW"
+    assert effective_confidence(r) == "LOW"  # never raised

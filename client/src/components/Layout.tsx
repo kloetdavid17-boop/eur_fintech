@@ -20,8 +20,14 @@ export function Layout() {
 
   useEffect(() => setOpen(false), [location.pathname, location.search]);
   useEffect(() => {
+    if (location.hash) {
+      // In-page links such as /#how: wait a tick so the page has rendered, then scroll to the section.
+      const id = decodeURIComponent(location.hash.slice(1));
+      const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }), 50);
+      return () => window.clearTimeout(t);
+    }
     window.scrollTo(0, 0);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold ${
@@ -35,14 +41,23 @@ export function Layout() {
 
   const items = (
     <>
-      <NavLink to="/" end className={link}>
-        Upload a receipt
-      </NavLink>
       {user ? (
         <NavLink to="/dashboard" className={link}>
           Dashboard
         </NavLink>
-      ) : null}
+      ) : (
+        <>
+          <NavLink to="/" end className={link}>
+            Home
+          </NavLink>
+          <Link to="/#how" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+            How it works
+          </Link>
+        </>
+      )}
+      <NavLink to="/pricing" className={link}>
+        Pricing
+      </NavLink>
     </>
   );
 

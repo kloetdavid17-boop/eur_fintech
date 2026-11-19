@@ -1,102 +1,42 @@
-// Page 1: landing + receipt capture. The upload area is the first thing under the headline.
-import { useEffect, useRef, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { useQueryClient } from "@tanstack/react-query";
-import { PiCamera, PiEnvelopeSimple, PiListChecks, PiSparkle } from "react-icons/pi";
-import { apiErrorInfo, processReceipt } from "../api";
+// Home: the pitch for a visitor who is not signed in. One job: show what TradeTrack does and get them to
+// create a free account. Signed-in users go straight to their dashboard, where uploading happens.
+// The original one-page version is kept at /classic for comparison.
+import { Link, Navigate } from "react-router-dom";
+import { PiCamera, PiListChecks, PiUserPlus } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Alert } from "../components/Alert";
 import { Button, buttonClasses } from "../components/Button";
 import { Card } from "../components/Card";
-import { PlanCards, FeatureMatrix } from "../components/PlanCards";
-import { UpgradeButton } from "../components/UpgradeButton";
+import { limitLabel, priceLabel } from "../components/PlanCards";
 import { SampleReceiptDemo } from "../components/SampleReceiptDemo";
-import { Spinner } from "../components/Spinner";
-import { UploadZone } from "../components/UploadZone";
 import { useConfig } from "../hooks/useConfig";
-import { formatBytes } from "../lib/format";
 
 const STEPS = [
   {
-    icon: PiCamera,
-    title: "1. Capture",
-    text: "Snap a photo or upload a PDF.",
+    icon: PiUserPlus,
+    title: "1. Create a free account",
+    text: "It takes a minute and needs no credit card. Your receipts stay private to you.",
   },
   {
-    icon: PiSparkle,
-    title: "2. We read it",
-    text: "AI pulls out the merchant, date, items, GST/HST/PST/QST and total, and suggests a category.",
+    icon: PiCamera,
+    title: "2. Upload a receipt",
+    text: "Snap a photo or upload a PDF. AI reads the merchant, date, items, GST/HST/PST/QST and total, and suggests a category.",
   },
   {
     icon: PiListChecks,
-    title: "3. You confirm",
-    text: "Fix anything that looks off, then save. Your records stay ready for your bookkeeping.",
+    title: "3. Check and save",
+    text: "Fix anything that looks off, then save. Your records stay ready for your bookkeeping and your accountant.",
   },
 ];
 
 export function Landing() {
   const { user, loading, openAuthModal } = useAuth();
   const { data: config, isError: configError, failureCount } = useConfig();
-  const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
-  const [pending, setPending] = useState<File | null>(null);
-  const [busyFile, setBusyFile] = useState<File | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const inFlight = useRef(false);
+  if (!loading && user) return <Navigate to="/dashboard" replace />;
 
-  async function run(file: File) {
-    if (inFlight.current) return;
-    inFlight.current = true;
-    setError(null);
-    setBusyFile(file);
-    try {
-      const receipt = await processReceipt(file);
-      void queryClient.invalidateQueries({ queryKey: ["receipts"] });
-      navigate(`/receipts/${receipt.id}`);
-    } catch (err) {
-      const info = apiErrorInfo(err, "We couldn't process that file. Please try again.");
-      const receiptId = typeof info.data.receipt_id === "string" ? info.data.receipt_id : null;
-      if (receiptId && (info.code === "extraction_failed" || info.code === "ai_not_configured")) {
-        // The file was kept: send the user to the receipt so they can fill it in by hand.
-        navigate(`/receipts/${receiptId}`, { state: { notice: info.message } });
-        return;
-      }
-      setError(
-        info.code === "ai_not_configured"
-          ? `${info.message} Receipt reading isn't set up on this server yet, so this file was not processed.`
-          : info.message
-      );
-    } finally {
-      inFlight.current = false;
-      setBusyFile(null);
-    }
-  }
-
-  function onFile(file: File) {
-    setError(null);
-    if (!user) {
-      // Keep the file in memory while the visitor signs in; it is not uploaded yet.
-      setPending(file);
-      openAuthModal("register", {
-        reason: "Create a free account or sign in to process your receipt. Your file stays on this device until you do.",
-      });
-      return;
-    }
-    void run(file);
-  }
-
-  // Once the visitor is signed in (via the modal or the header), continue the upload.
-  useEffect(() => {
-    if (user && pending && !inFlight.current) {
-      const file = pending;
-      setPending(null);
-      void run(file);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, pending]);
-
-  const busy = busyFile !== null;
+  const free = config?.plans.find((p) => p.id === "FREE");
+  const premium = config?.plans.find((p) => p.id === "PREMIUM");
 
   return (
     <div className="space-y-12">
@@ -106,97 +46,62 @@ export function Landing() {
             Less paperwork. More business.
           </h1>
           <p className="mt-2 text-base text-slate-700 sm:text-lg">
-            Snap or upload a receipt and TradeTrack reads it, suggests an expense category and files it
-            in your private account. Built for Canadian tradespeople, contractors and small
-            businesses.
+            TradeTrack reads your receipts for you: upload a photo or PDF and it pulls out the merchant, date and
+            GST/HST/PST/QST, suggests an expense category, and files it in your private account. Built for Canadian
+            tradespeople, contractors and small businesses.
+          </p>
+          <p className="mt-3 inline-flex flex-wrap items-center gap-x-2 gap-y-1 rounded-lg bg-brand-soft px-3 py-1.5 text-sm font-semibold text-brand">
+            {free && premium ? (
+              <>
+                <span>Free: {limitLabel(free).toLowerCase()}.</span>
+                <span>Premium: {priceLabel(premium)}.</span>
+                <Link to="/pricing" className="underline">
+                  Compare plans
+                </Link>
+              </>
+            ) : (
+              <>
+                <span>Free to start, no credit card.</span>
+                <Link to="/pricing" className="underline">
+                  See pricing
+                </Link>
+              </>
+            )}
           </p>
         </div>
 
         {!config && !configError && failureCount > 0 ? (
           <Alert kind="info" title="The server is waking up">
-            TradeTrack runs on a free hosting plan that sleeps when idle. This can take up to a minute the first
-            time; the page will update by itself.
-          </Alert>
-        ) : null}
-        {configError ? (
-          <Alert kind="warning" title="Couldn't load settings from the server">
-            You can still try uploading. If something fails, refresh the page in a moment.
-          </Alert>
-        ) : null}
-        {config && !config.services.ai_configured ? (
-          <Alert kind="warning" title="Receipt reading is not set up on this server yet">
-            Uploads are accepted but no AI extraction will run, so you would need to type the receipt
-            details in yourself.
+            TradeTrack runs on a free hosting plan that sleeps when idle. This can take up to a minute the first time;
+            the page will update by itself.
           </Alert>
         ) : null}
 
-        <div id="upload" className="scroll-mt-20">
-          {busy ? (
-            <Card className="p-8 text-center" >
-              <div aria-live="polite" className="space-y-2">
-                <Spinner className="mx-auto h-8 w-8 text-brand" />
-                <p className="text-base font-semibold text-ink">Reading your receipt…</p>
-                <p className="text-sm text-slate-600">
-                  {busyFile?.name} ({formatBytes(busyFile?.size ?? 0)}). This can take up to a minute.
-                  Please keep this page open.
-                </p>
-              </div>
-            </Card>
-          ) : (
-            <UploadZone upload={config?.upload} busy={busy} onFile={onFile} />
-          )}
-          {pending && !user && !loading ? (
-            <Alert
-              kind="info"
-              className="mt-3"
-              title={`Ready: ${pending.name} (${formatBytes(pending.size)})`}
-              action={
-                <div className="flex flex-wrap gap-2">
-                  <Button size="sm" onClick={() => openAuthModal("register")}>
-                    Create free account
-                  </Button>
-                  <Button size="sm" variant="secondary" onClick={() => openAuthModal("login")}>
-                    Sign in
-                  </Button>
-                  <Button size="sm" variant="ghost" onClick={() => setPending(null)}>
-                    Remove file
-                  </Button>
-                </div>
-              }
-            >
-              Sign in or create an account to process it. Nothing has been uploaded yet.
-            </Alert>
-          ) : null}
-          {error ? (
-            <Alert kind="error" className="mt-3" title="That didn't work">
-              {error}
-            </Alert>
-          ) : null}
-          {!user && !loading && !pending ? (
-            <p className="mt-2 text-sm text-slate-600">
-              You'll be asked to sign in or create a free account first. Receipts are private to your
-              account.
-            </p>
-          ) : null}
-        </div>
-
-        <div className="flex flex-wrap gap-2">
-          {user ? (
-            <Link to="/dashboard" className={buttonClasses("secondary")}>
-              Go to my dashboard
-            </Link>
-          ) : (
-            <>
-              <Button onClick={() => openAuthModal("register")}>Create free account</Button>
-              <Button variant="secondary" onClick={() => openAuthModal("login")}>
-                Sign in
-              </Button>
-            </>
-          )}
+        <div className="flex flex-wrap items-center gap-3">
+          <Button size="lg" onClick={() => openAuthModal("register")}>
+            Create free account
+          </Button>
+          <a href="#sample" className={buttonClasses("secondary", "lg")}>
+            See a sample receipt
+          </a>
+          <button
+            type="button"
+            className="px-2 text-sm font-semibold text-brand underline"
+            onClick={() => openAuthModal("login")}
+          >
+            I already have an account
+          </button>
         </div>
       </section>
 
-      <section aria-labelledby="how-title">
+      <section id="sample" aria-labelledby="demo-title" className="scroll-mt-20 space-y-3">
+        <h2 id="demo-title" className="text-xl font-bold text-ink">
+          See how a receipt is read (no sign-up needed)
+        </h2>
+        <SampleReceiptDemo />
+      </section>
+
+      <section id="how" aria-labelledby="how-title" className="scroll-mt-20">
         <h2 id="how-title" className="text-xl font-bold text-ink">
           How it works
         </h2>
@@ -206,99 +111,40 @@ export function Landing() {
               <Card className="h-full p-4">
                 <Icon className="h-7 w-7 text-brand" aria-hidden="true" />
                 <h3 className="mt-2 font-semibold text-ink">{title}</h3>
-                <p className="mt-1 text-sm text-slate-700">
-                  {title.startsWith("1.") && config?.services.inbound_email_configured
-                    ? "Snap a photo, upload a PDF, or forward the emailed receipt (Premium)."
-                    : text}
-                </p>
+                <p className="mt-1 text-sm text-slate-700">{text}</p>
               </Card>
             </li>
           ))}
         </ol>
       </section>
 
-      <section aria-labelledby="email-title">
-        <Card className="p-5">
-          <div className="flex items-start gap-3">
-            <PiEnvelopeSimple className="mt-1 h-7 w-7 shrink-0 text-brand" aria-hidden="true" />
-            <div className="min-w-0 space-y-2">
-              <h2 id="email-title" className="text-xl font-bold text-ink">
-                Forward emailed receipts
-              </h2>
-              <p className="text-sm text-slate-700">
-                Premium accounts get a private forwarding address. Forward a receipt or invoice email
-                from a supplier and TradeTrack processes the PDF or image attachments the same way as an
-                upload. The result lands in your dashboard marked <strong>Needs review</strong>, so you
-                always confirm it before it is saved.
-              </p>
-              {config ? (
-                config.services.inbound_email_configured ? (
-                  <Alert kind="success">
-                    Email forwarding is switched on. Premium members find their address in the
-                    dashboard.
-                  </Alert>
-                ) : (
-                  <Alert kind="warning" title="Not switched on yet">
-                    Email forwarding isn't configured on this server, so no forwarding addresses are
-                    issued. Uploading receipts works.
-                  </Alert>
-                )
-              ) : null}
-            </div>
-          </div>
-        </Card>
-      </section>
-
-      <section aria-labelledby="demo-title" className="space-y-3">
-        <h2 id="demo-title" className="text-xl font-bold text-ink">
-          See what you get
-        </h2>
-        <SampleReceiptDemo />
-      </section>
-
       <section aria-labelledby="plans-title" className="space-y-3">
         <h2 id="plans-title" className="text-xl font-bold text-ink">
-          Free or Premium
+          Free to start, Premium when you need more
         </h2>
-        {config ? (
-          <>
-            <PlanCards
-              config={config}
-              currentPlan={user?.plan}
-              renderAction={(plan) =>
-                plan.id === "PREMIUM" ? (
-                  <UpgradeButton />
-                ) : user ? null : (
-                  <Button className="w-full" variant="secondary" onClick={() => openAuthModal("register")}>
-                    Start free
-                  </Button>
-                )
-              }
-            />
-            <details className="rounded-xl border border-slate-200 bg-white p-3">
-              <summary className="cursor-pointer text-sm font-semibold text-brand">Compare features</summary>
-              <div className="mt-3">
-                <FeatureMatrix config={config} />
-              </div>
-            </details>
-          </>
-        ) : (
-          <p className="text-sm text-slate-600">Plans are loading…</p>
-        )}
-        <div className="flex flex-wrap gap-2 pt-1">
-          <a href="#upload" className={buttonClasses("primary")}>
-            Process a receipt
-          </a>
-          {!user ? (
-            <>
-              <Button variant="secondary" onClick={() => openAuthModal("register")}>
-                Create account
-              </Button>
-              <Button variant="ghost" onClick={() => openAuthModal("login")}>
-                Sign in
-              </Button>
-            </>
-          ) : null}
+        {free && premium ? (
+          <div className="grid gap-3 md:grid-cols-2">
+            {[free, premium].map((plan) => (
+              <Card key={plan.id} className={`p-4 ${plan.id === "PREMIUM" ? "border-2 border-brand" : ""}`}>
+                <p className="font-bold text-ink">{plan.name}</p>
+                <p className="text-2xl font-extrabold text-ink">{priceLabel(plan)}</p>
+                <p className="text-sm text-slate-700">{limitLabel(plan)}</p>
+                <p className="mt-1 text-sm text-slate-700">
+                  {plan.id === "PREMIUM"
+                    ? "Plus summaries by month, quarter or year, exports and the accountant package."
+                    : "Upload, AI reading, review and search."}
+                </p>
+              </Card>
+            ))}
+          </div>
+        ) : null}
+        <div className="flex flex-wrap items-center gap-3 pt-1">
+          <Button size="lg" onClick={() => openAuthModal("register")}>
+            Create free account
+          </Button>
+          <Link to="/pricing" className={buttonClasses("secondary", "lg")}>
+            Compare plans
+          </Link>
         </div>
       </section>
     </div>

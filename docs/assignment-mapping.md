@@ -6,7 +6,7 @@ was actually run; "not run" means the code exists but needs an outside account t
 | Requirement | Implementation | Status |
 |---|---|---|
 | TradeTrack brand, Canadian market, CAD, GST/HST/PST/QST, province-aware, Ontario demo | Whole UI and API; `tax.py` holds a province table used **only** for hints and warnings, never to compute or overwrite amounts | Done; tax warnings tested |
-| Page 1: landing and capture (upload, camera, email explainer, plans, CTAs, labelled sample) | `pages/Landing.tsx`, `UploadZone`, `SampleReceiptDemo`, `PlanCards` | Done; checked in a browser at 390 px and 1280 px |
+| Page 1: home (pitch, labelled sample, steps, price, one CTA) plus a Pricing page; upload and camera moved to the dashboard | `pages/Landing.tsx`, `pages/Pricing.tsx`, `UploadPanel`, `UploadZone`, `SampleReceiptDemo`, `PlanCards` | Done; checked in a browser at 390 px and 1280 px |
 | Page 2: receipt detail (fields, line items, taxes, category, confidence/warnings, preview, edit, save, export) | `pages/ReceiptDetail.tsx`, `ReceiptForm` | Done; edit, save and refresh persistence checked in a browser against a real PostgreSQL database |
 | Page 3: dashboard (history, search/filter, usage, plans, forwarding, exports, profile, privacy) | `pages/Dashboard.tsx` and tab components | Done; the receipts list and usage meter were checked in a browser against the real backend, the other tabs only against mocked data |
 | Upload validation, corrupt/unsupported files, duplicates | `extraction.py` (type by file contents), `pipeline.py` (SHA-256 duplicates) | Tested |

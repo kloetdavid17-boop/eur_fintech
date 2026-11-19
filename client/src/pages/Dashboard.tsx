@@ -8,6 +8,7 @@ import { ForwardingTab } from "../components/ForwardingTab";
 import { PlanTab } from "../components/PlanTab";
 import { ProfileTab } from "../components/ProfileTab";
 import { ReceiptsTab } from "../components/ReceiptsTab";
+import { UploadPanel } from "../components/UploadPanel";
 import { UsageMeter } from "../components/UsageMeter";
 import { PremiumBadge } from "../components/StatusBadge";
 import { useUsage } from "../hooks/useUsage";
@@ -61,6 +62,8 @@ export function Dashboard() {
           </p>
         </div>
       </header>
+
+      <UploadPanel />
 
       {usage ? (
         <Card className="p-4">

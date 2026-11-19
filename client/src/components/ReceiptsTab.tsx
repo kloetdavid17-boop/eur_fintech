@@ -114,9 +114,9 @@ export function ReceiptsTab({ goTo }: { goTo: (t: "plan") => void }) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <h2 className="text-lg font-bold text-ink">Your receipts</h2>
-        <Link to="/" className={buttonClasses("primary", "sm")}>
+        <a href="#upload" className={buttonClasses("primary", "sm")}>
           <PiPlus aria-hidden="true" /> Upload a receipt
-        </Link>
+        </a>
       </div>
 
       <Card className="space-y-3 p-4">
@@ -190,9 +190,9 @@ export function ReceiptsTab({ goTo }: { goTo: (t: "plan") => void }) {
               : "Upload your first receipt and it will appear here."}
           </p>
           {!filtered ? (
-            <Link to="/" className={buttonClasses("primary", "md", "mt-4")}>
+            <a href="#upload" className={buttonClasses("primary", "md", "mt-4")}>
               Upload a receipt
-            </Link>
+            </a>
           ) : null}
         </Card>
       ) : (
