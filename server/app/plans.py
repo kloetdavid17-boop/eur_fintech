@@ -29,9 +29,9 @@ class PlanDef:
 FORWARDING = "Email-forwarding receipt capture"
 
 
-def forwarding_label() -> str:
-    """Never advertise email forwarding as working when it is not configured on this server."""
-    return FORWARDING if settings.inbound_email_configured else f"{FORWARDING} (coming soon)"
+def forwarding_enabled() -> bool:
+    """Email forwarding is only offered (plans, comparison table, landing page) when it really works."""
+    return settings.inbound_email_configured
 
 
 def get_plans() -> dict[str, PlanDef]:
@@ -58,7 +58,7 @@ def get_plans() -> dict[str, PlanDef]:
             monthly_receipt_limit=None,
             features=[
                 "Unlimited saved receipts",
-                forwarding_label(),
+                *([FORWARDING] if forwarding_enabled() else []),
                 "Date and amount filters",
                 "Expense summary by month, quarter or year, with tax by province (PDF and CSV)",
                 "Accountant package: summary, receipts CSV and original files in one ZIP",
@@ -71,7 +71,7 @@ def get_plans() -> dict[str, PlanDef]:
 
 # (feature label, free, premium) — shown as the comparison table in the UI.
 def feature_matrix() -> list[tuple[str, bool, bool]]:
-    return [(forwarding_label() if f == FORWARDING else f, a, b) for f, a, b in _FEATURE_MATRIX]
+    return [row for row in _FEATURE_MATRIX if row[0] != FORWARDING or forwarding_enabled()]
 
 
 _FEATURE_MATRIX: list[tuple[str, bool, bool]] = [

@@ -2,6 +2,9 @@
 import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useAuth } from "../auth";
+import { UpgradeButton } from "../components/UpgradeButton";
+import { useUsage } from "../hooks/useUsage";
 import {
   PiArrowLeft,
   PiArchive,
@@ -50,6 +53,8 @@ interface LimitInfo {
 export function ReceiptDetail() {
   const { id = "" } = useParams();
   const navigate = useNavigate();
+  const { user } = useAuth();
+  const { data: usage } = useUsage();
   const location = useLocation();
   const queryClient = useQueryClient();
   const { data: config } = useConfig();
@@ -261,6 +266,26 @@ export function ReceiptDetail() {
           }>
             {success}
           </Alert>
+        ) : null}
+        {success && r.processing_status === "SAVED" ? (
+          <Card className="space-y-3 p-4">
+            <p className="font-semibold text-ink">What next?</p>
+            <div className="flex flex-wrap gap-2">
+              <Link to="/" className={buttonClasses("primary")}>Upload another receipt</Link>
+              <Link to="/dashboard" className={buttonClasses("secondary")}>Go to my dashboard</Link>
+            </div>
+            {user?.plan !== "PREMIUM" ? (
+              <div className="grid gap-3 border-t border-slate-200 pt-3 sm:grid-cols-[1fr_auto] sm:items-center">
+                <p className="text-sm text-slate-700">
+                  {usage && usage.limit !== null && usage.limit !== undefined
+                    ? `You have saved ${usage.saved_this_period} of ${usage.limit} receipts this month on the Free plan. `
+                    : ""}
+                  Premium removes the limit and adds summaries by month, quarter or year and exports for your accountant.
+                </p>
+                <div className="sm:w-64"><UpgradeButton compact /></div>
+              </div>
+            ) : null}
+          </Card>
         ) : null}
         {problem ? <Alert kind="error">{problem}</Alert> : null}
         {limit ? (

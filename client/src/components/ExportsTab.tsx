@@ -53,7 +53,7 @@ export function ExportsTab({ goTo }: { goTo: (t: "plan" | "account") => void }) 
     return (
       <div className="space-y-4">
         <h2 className="text-lg font-bold text-ink">Exports</h2>
-        <PremiumLock title="Exports, expense summaries and the accountant package" onUpgrade={() => goTo("plan")}>
+        <PremiumLock title="Exports, expense summaries and the accountant package">
           Premium lets you export saved receipts, see a summary by month, quarter or year (by category, tax
           type and province), and send your accountant one ZIP with the summary, a CSV and the original files. On the Free plan you can still download each receipt's PDF summary from
           its page.

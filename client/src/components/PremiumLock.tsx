@@ -3,16 +3,14 @@
 import type { ReactNode } from "react";
 import { PiLockSimple } from "react-icons/pi";
 import { PremiumBadge } from "./StatusBadge";
-import { Button } from "./Button";
+import { UpgradeButton } from "./UpgradeButton";
 
 export function PremiumLock({
   title,
   children,
-  onUpgrade,
 }: {
   title: string;
   children?: ReactNode;
-  onUpgrade: () => void;
 }) {
   return (
     <div className="rounded-xl border border-amber-300 bg-accent-soft p-4">
@@ -23,9 +21,7 @@ export function PremiumLock({
             {title} <PremiumBadge />
           </p>
           {children ? <div className="mt-1 text-sm text-slate-800">{children}</div> : null}
-          <Button variant="accent" size="sm" className="mt-3" onClick={onUpgrade}>
-            See Premium
-          </Button>
+          <UpgradeButton className="mt-3 max-w-sm" />
         </div>
       </div>
     </div>

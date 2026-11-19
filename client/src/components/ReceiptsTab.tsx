@@ -33,7 +33,7 @@ const STATUSES = [
   { value: "ARCHIVED", label: "Archived" },
 ];
 
-export function ReceiptsTab({ goTo }: { goTo: (t: "plan") => void }) {
+export function ReceiptsTab() {
   const { user } = useAuth();
   const { data: config } = useConfig();
   const queryClient = useQueryClient();
@@ -161,7 +161,7 @@ export function ReceiptsTab({ goTo }: { goTo: (t: "plan") => void }) {
           ) : null}
         </form>
         {!premium ? (
-          <PremiumLock title="Date range and amount filters" onUpgrade={() => goTo("plan")}>
+          <PremiumLock title="Date range and amount filters">
             Premium lets you filter by date range and by minimum or maximum amount. Search, category and
             status filters are free.
           </PremiumLock>

@@ -121,18 +121,29 @@ def test_extraction_prompt_covers_discounts():
     assert "Do not list those lines in" in SYSTEM_PROMPT
 
 
-async def test_forwarding_is_not_advertised_as_working_when_unconfigured(client, monkeypatch):
+async def test_forwarding_is_not_listed_until_it_works(client, monkeypatch):
     cfg = (await client.get("/api/config")).json()
     premium = next(p for p in cfg["plans"] if p["id"] == "PREMIUM")
-    assert "Email-forwarding receipt capture (coming soon)" in premium["features"]
-    assert any(r["feature"] == "Email-forwarding receipt capture (coming soon)" for r in cfg["feature_matrix"])
+    assert not any("forwarding" in f.lower() for f in premium["features"])
+    assert not any("forwarding" in r["feature"].lower() for r in cfg["feature_matrix"])
 
     monkeypatch.setattr(settings, "inbound_domain", "receipts.example.ca")
     monkeypatch.setattr(settings, "mailgun_signing_key", "key")
     cfg = (await client.get("/api/config")).json()
     premium = next(p for p in cfg["plans"] if p["id"] == "PREMIUM")
     assert "Email-forwarding receipt capture" in premium["features"]
-    assert not any("coming soon" in f for f in premium["features"])
+    assert any(r["feature"] == "Email-forwarding receipt capture" for r in cfg["feature_matrix"])
+
+
+def test_high_confidence_is_lowered_next_to_a_warning():
+    from app.models import Receipt, effective_confidence
+
+    r = Receipt(extraction_confidence="HIGH", warnings=[{"code": "x", "severity": "info", "message": "m"}])
+    assert effective_confidence(r) == "HIGH"
+    r.warnings = [{"code": "lines_vs_subtotal", "severity": "warning", "message": "m"}]
+    assert effective_confidence(r) == "MEDIUM"
+    r.extraction_confidence = "LOW"
+    assert effective_confidence(r) == "LOW"
 
 
 async def test_config_flags_stripe_test_mode(client, monkeypatch):

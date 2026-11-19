@@ -383,12 +383,20 @@ def money_str(value: Decimal | None) -> str | None:
     return None if value is None else f"{Decimal(value):.2f}"
 
 
+def effective_confidence(r: Receipt) -> str:
+    """The stored AI confidence, lowered to MEDIUM while a check at "warning" level fails (for example
+    line items that do not add up). A receipt is never labelled "High confidence" next to a warning."""
+    if r.extraction_confidence == "HIGH" and any(w.get("severity") == "warning" for w in (r.warnings or [])):
+        return "MEDIUM"
+    return r.extraction_confidence
+
+
 def receipt_to_out(r: Receipt) -> ReceiptOut:
     return ReceiptOut(
         id=r.id,
         source=r.source,
         processing_status=r.processing_status,
-        extraction_confidence=r.extraction_confidence,
+        extraction_confidence=effective_confidence(r),
         extraction_error=r.extraction_error,
         original_filename=r.original_filename,
         file_mime_type=r.file_mime_type,

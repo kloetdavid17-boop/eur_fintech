@@ -16,7 +16,7 @@ import { PremiumLock } from "./PremiumLock";
 import { PageSpinner } from "./Spinner";
 import { InboundBadge } from "./StatusBadge";
 
-export function ForwardingTab({ goTo }: { goTo: (t: "plan") => void }) {
+export function ForwardingTab() {
   const { user, setUser } = useAuth();
   const { data: config } = useConfig();
   const premium = user?.plan === "PREMIUM";
@@ -60,7 +60,7 @@ export function ForwardingTab({ goTo }: { goTo: (t: "plan") => void }) {
       {message ? <Alert kind={message.kind}>{message.text}</Alert> : null}
 
       {!premium ? (
-        <PremiumLock title="Forward receipts by email" onUpgrade={() => goTo("plan")}>
+        <PremiumLock title="Forward receipts by email">
           Premium accounts get a private address. Forward a supplier's receipt email and TradeTrack
           reads the attachments for you.{" "}
           {configured ? "" : "Email forwarding is also not switched on for this server yet."}

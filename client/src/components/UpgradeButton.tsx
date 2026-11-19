@@ -24,7 +24,7 @@ export function TestCardNote() {
   );
 }
 
-export function UpgradeButton({ className = "" }: { className?: string }) {
+export function UpgradeButton({ className = "", compact = false }: { className?: string; compact?: boolean }) {
   const { user, openAuthModal, refresh, setNotice } = useAuth();
   const { data: config } = useConfig();
   const queryClient = useQueryClient();
@@ -90,8 +90,8 @@ export function UpgradeButton({ className = "" }: { className?: string }) {
           </>
         )}
       </Button>
-      {!user ? <p className="mt-1.5 text-center text-xs text-slate-600">You'll create a free account first.</p> : null}
-      {mode === "stripe" && config.services.billing_test_mode ? <TestCardNote /> : null}
+      {!user && !compact ? <p className="mt-1.5 text-center text-xs text-slate-600">You'll create a free account first.</p> : null}
+      {!compact && mode === "stripe" && config.services.billing_test_mode ? <TestCardNote /> : null}
       {error ? <Alert kind="error" className="mt-2">{error}</Alert> : null}
     </div>
   );

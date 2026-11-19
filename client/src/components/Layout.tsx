@@ -2,6 +2,7 @@
 // the not-tax-advice note.
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
+import { buttonClasses } from "./Button";
 import { PiList, PiX } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Alert } from "./Alert";
@@ -20,8 +21,14 @@ export function Layout() {
 
   useEffect(() => setOpen(false), [location.pathname, location.search]);
   useEffect(() => {
+    if (location.hash) {
+      // In-page links such as /#how: wait a tick so the page has rendered, then scroll to the section.
+      const id = decodeURIComponent(location.hash.slice(1));
+      const t = window.setTimeout(() => document.getElementById(id)?.scrollIntoView({ behavior: "smooth" }), 50);
+      return () => window.clearTimeout(t);
+    }
     window.scrollTo(0, 0);
-  }, [location.pathname]);
+  }, [location.pathname, location.hash]);
 
   const link = ({ isActive }: { isActive: boolean }) =>
     `rounded-lg px-3 py-2 text-sm font-semibold ${
@@ -36,7 +43,15 @@ export function Layout() {
   const items = (
     <>
       <NavLink to="/" end className={link}>
-        Upload a receipt
+        {user ? "Upload a receipt" : "Home"}
+      </NavLink>
+      {!user ? (
+        <Link to="/#how" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
+          How it works
+        </Link>
+      ) : null}
+      <NavLink to="/pricing" className={link}>
+        Pricing
       </NavLink>
       {user ? (
         <NavLink to="/dashboard" className={link}>
@@ -48,6 +63,11 @@ export function Layout() {
 
   const account = loading ? null : user ? (
     <>
+      {user.plan !== "PREMIUM" ? (
+        <Link to="/pricing" className={buttonClasses("accent", "sm")}>
+          Upgrade
+        </Link>
+      ) : null}
       <span className="truncate px-1 text-sm text-slate-700" title={user.email}>
         {user.first_name}
       </span>

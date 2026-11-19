@@ -7,6 +7,7 @@ import { RequireAuth } from "./components/RequireAuth";
 import { Dashboard } from "./pages/Dashboard";
 import { Landing } from "./pages/Landing";
 import { ResetPassword } from "./pages/ResetPassword";
+import { Pricing } from "./pages/Pricing";
 import { ReceiptDetail } from "./pages/ReceiptDetail";
 
 export function App() {
@@ -31,6 +32,7 @@ export function App() {
               </RequireAuth>
             }
           />
+          <Route path="/pricing" element={<Pricing />} />
           <Route path="/reset-password" element={<ResetPassword />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Route>

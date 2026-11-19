@@ -10,6 +10,8 @@ import { ProfileTab } from "../components/ProfileTab";
 import { ReceiptsTab } from "../components/ReceiptsTab";
 import { UsageMeter } from "../components/UsageMeter";
 import { PremiumBadge } from "../components/StatusBadge";
+import { UpgradeButton } from "../components/UpgradeButton";
+import { useConfig } from "../hooks/useConfig";
 import { useUsage } from "../hooks/useUsage";
 
 export const TABS = [
@@ -25,11 +27,13 @@ export function Dashboard() {
   const { user } = useAuth();
   const [params, setParams] = useSearchParams();
   const { data: usage } = useUsage();
+  const { data: config } = useConfig();
+  const tabs = TABS.filter((t) => t.id !== "forwarding" || config?.services.inbound_email_configured);
   const tabRefs = useRef<Record<string, HTMLButtonElement | null>>({});
 
   // Returning from Stripe lands on /dashboard?billing=success: show the plan tab.
   const requested = params.get("tab") ?? (params.get("billing") ? "plan" : "receipts");
-  const tab: TabId = TABS.some((t) => t.id === requested) ? (requested as TabId) : "receipts";
+  const tab: TabId = tabs.some((t) => t.id === requested) ? (requested as TabId) : "receipts";
 
   function setTab(next: TabId) {
     const p = new URLSearchParams(params);
@@ -42,7 +46,7 @@ export function Dashboard() {
     const dir = e.key === "ArrowRight" ? 1 : e.key === "ArrowLeft" ? -1 : 0;
     if (!dir) return;
     e.preventDefault();
-    const next = TABS[(index + dir + TABS.length) % TABS.length];
+    const next = tabs[(index + dir + tabs.length) % tabs.length];
     setTab(next.id);
     tabRefs.current[next.id]?.focus();
   }
@@ -60,6 +64,11 @@ export function Dashboard() {
             {user.plan === "PREMIUM" ? <PremiumBadge /> : <span className="rounded-full bg-slate-200 px-2.5 py-0.5 text-xs font-semibold text-slate-800">Free plan</span>}
           </p>
         </div>
+        {user.plan !== "PREMIUM" ? (
+          <div className="w-full sm:w-64">
+            <UpgradeButton compact />
+          </div>
+        ) : null}
       </header>
 
       {usage ? (
@@ -69,7 +78,7 @@ export function Dashboard() {
       ) : null}
 
       <div role="tablist" aria-label="Dashboard sections" className="-mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
-        {TABS.map((t, i) => (
+        {tabs.map((t, i) => (
           <button
             key={t.id}
             ref={(el) => {
@@ -92,9 +101,9 @@ export function Dashboard() {
       </div>
 
       <div role="tabpanel" id={`panel-${tab}`} aria-labelledby={`tab-${tab}`}>
-        {tab === "receipts" ? <ReceiptsTab goTo={setTab} /> : null}
+        {tab === "receipts" ? <ReceiptsTab /> : null}
         {tab === "plan" ? <PlanTab goTo={setTab} /> : null}
-        {tab === "forwarding" ? <ForwardingTab goTo={setTab} /> : null}
+        {tab === "forwarding" ? <ForwardingTab /> : null}
         {tab === "exports" ? <ExportsTab goTo={setTab} /> : null}
         {tab === "account" ? <ProfileTab /> : null}
       </div>

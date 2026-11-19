@@ -1,5 +1,6 @@
 // Sign-in / create-account modal. Opened from anywhere via useAuth().openAuthModal().
 import { useState, type FormEvent } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { apiErrorInfo, forgotPassword } from "../api";
 import { useAuth } from "../auth";
 import { useConfig } from "../hooks/useConfig";
@@ -34,10 +35,13 @@ export function AuthModal() {
 
 function useFinish() {
   const { modal, closeAuthModal } = useAuth();
+  const navigate = useNavigate();
+  const { pathname } = useLocation();
   return (user: Parameters<NonNullable<typeof modal.onSuccess>>[0]) => {
     const cb = modal.onSuccess;
     closeAuthModal();
-    cb?.(user);
+    if (cb) cb(user);
+    else if (pathname === "/") navigate("/dashboard"); // nothing is waiting: go to the account
   };
 }
 
