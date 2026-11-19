@@ -1,7 +1,7 @@
-// Home: the pitch for a visitor who is not signed in. One job: show what TradeTrack does and get them to
-// create a free account. Signed-in users go straight to their dashboard, where uploading happens.
+// Home. For a visitor who is not signed in it is the pitch: show what TradeTrack does and get them to
+// create a free account. A signed-in user sees a welcome-back home (upload, allowance, latest receipts).
 // The original one-page version is kept at /classic for comparison.
-import { Link, Navigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import { PiCamera, PiListChecks, PiUserPlus } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Alert } from "../components/Alert";
@@ -9,6 +9,7 @@ import { Button, buttonClasses } from "../components/Button";
 import { Card } from "../components/Card";
 import { limitLabel, priceLabel } from "../components/PlanCards";
 import { SampleReceiptDemo } from "../components/SampleReceiptDemo";
+import { WelcomeBack } from "../components/WelcomeBack";
 import { useConfig } from "../hooks/useConfig";
 
 const STEPS = [
@@ -33,7 +34,7 @@ export function Landing() {
   const { user, loading, openAuthModal } = useAuth();
   const { data: config, isError: configError, failureCount } = useConfig();
 
-  if (!loading && user) return <Navigate to="/dashboard" replace />;
+  if (!loading && user) return <WelcomeBack />;
 
   const free = config?.plans.find((p) => p.id === "FREE");
   const premium = config?.plans.find((p) => p.id === "PREMIUM");

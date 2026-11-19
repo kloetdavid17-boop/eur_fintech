@@ -51,7 +51,8 @@ province-aware, with **Ontario** as the default demo jurisdiction.
 
 ## Product pages (three, per assignment requirement)
 
-1. **Landing (home)** — brand/value prop, sample walk-through, steps, price, one CTA; a separate `/pricing`
+1. **Landing (home)** — brand/value prop, sample walk-through, steps, price, one CTA for visitors; a welcome-back home
+   (upload, allowance, latest receipts) for signed-in users; a separate `/pricing`
    page holds the plan comparison. Receipt upload now lives at the top of the dashboard (the earlier
    one-page layout is kept at `/classic` for comparison). Original description: upload area (image/PDF, camera capture on
    mobile), email-forwarding explainer, plan overview, CTAs to process a receipt / sign up / sign in.

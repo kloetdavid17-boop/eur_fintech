@@ -1,29 +1,45 @@
-// Route guard for private pages (dashboard, receipt detail). While the session is
-// being checked we show a spinner; if nobody is signed in we send the visitor home
-// and open the sign-in modal, then bring them back to where they were going.
-import { useEffect, type ReactNode } from "react";
-import { useLocation, useNavigate } from "react-router-dom";
+// Route guard for private pages (dashboard, receipt detail). While the session is being checked we show
+// a spinner. A visitor who is not signed in sees a short "sign in to continue" page right here, with
+// sign-in, create-account and back-to-home options. Signing in keeps them on the page they asked for.
+import type { ReactNode } from "react";
+import { Link, useLocation } from "react-router-dom";
+import { PiArrowLeft, PiLockSimple } from "react-icons/pi";
 import { useAuth } from "../auth";
+import { Button, buttonClasses } from "./Button";
+import { Card } from "./Card";
 import { PageSpinner } from "./Spinner";
 
 export function RequireAuth({ children }: { children: ReactNode }) {
   const { user, loading, openAuthModal } = useAuth();
-  const navigate = useNavigate();
-  const location = useLocation();
-  const target = location.pathname + location.search;
-
-  useEffect(() => {
-    if (!loading && !user) {
-      openAuthModal("login", {
-        reason: "Please sign in to see your receipts and account.",
-        onSuccess: () => navigate(target, { replace: true }),
-      });
-      navigate("/", { replace: true });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, user]);
+  const { pathname } = useLocation();
 
   if (loading) return <PageSpinner label="Checking your session…" />;
-  if (!user) return null;
-  return <>{children}</>;
+  if (user) return <>{children}</>;
+
+  const what = pathname.startsWith("/receipts/") ? "this receipt" : "your dashboard";
+  return (
+    <div className="mx-auto max-w-md py-10">
+      <Card className="space-y-4 p-6 text-center">
+        <PiLockSimple className="mx-auto h-9 w-9 text-brand" aria-hidden="true" />
+        <div>
+          <h1 className="text-xl font-extrabold text-ink">Sign in to see {what}</h1>
+          <p className="mt-1 text-sm text-slate-700">
+            Your receipts and account are private to you, so you need to be signed in. Signing in or creating a free
+            account takes you straight back here.
+          </p>
+        </div>
+        <div className="flex flex-col gap-2">
+          <Button size="lg" onClick={() => openAuthModal("login")}>
+            Sign in
+          </Button>
+          <Button size="lg" variant="secondary" onClick={() => openAuthModal("register")}>
+            Create free account
+          </Button>
+        </div>
+        <Link to="/" className={`${buttonClasses("ghost", "sm")} mx-auto`}>
+          <PiArrowLeft aria-hidden="true" /> Back to home
+        </Link>
+      </Card>
+    </div>
+  );
 }

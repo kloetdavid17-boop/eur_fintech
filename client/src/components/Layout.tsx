@@ -41,20 +41,12 @@ export function Layout() {
 
   const items = (
     <>
-      {user ? (
-        <NavLink to="/dashboard" className={link}>
-          Dashboard
-        </NavLink>
-      ) : (
-        <>
-          <NavLink to="/" end className={link}>
-            Home
-          </NavLink>
-          <Link to="/#how" className="rounded-lg px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100">
-            How it works
-          </Link>
-        </>
-      )}
+      <NavLink to="/" end className={link}>
+        Home
+      </NavLink>
+      <NavLink to="/dashboard" className={link}>
+        Dashboard
+      </NavLink>
       <NavLink to="/pricing" className={link}>
         Pricing
       </NavLink>
