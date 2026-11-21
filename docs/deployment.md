@@ -33,7 +33,8 @@ Environment variables (all optional ones can be added later; the app reports wha
 | `ZZPAY_FRONTEND_URL` | For Stripe | Same frontend URL; used for the return links after payment. |
 | `ZZPAY_OPENAI_API_KEY` | For AI reading | Without it, receipts are kept and filled in by hand. Optional `ZZPAY_OPENAI_MODEL` (default `gpt-4o-mini`). |
 | `ZZPAY_STRIPE_SECRET_KEY`, `ZZPAY_STRIPE_PRICE_ID`, `ZZPAY_STRIPE_WEBHOOK_SECRET` | For real payments | Without them: labelled demo upgrade. Guide: [subscription-model.md](subscription-model.md). |
-| `ZZPAY_MAILGUN_SIGNING_KEY`, `ZZPAY_INBOUND_DOMAIN` | For email forwarding | Guide: [email-forwarding.md](email-forwarding.md). |
+| `ZZPAY_MAILGUN_SIGNING_KEY`, `ZZPAY_INBOUND_DOMAIN` | For email forwarding with your own domain | Guide: [email-forwarding.md](email-forwarding.md). |
+| `ZZPAY_INBOUND_GMAIL_ADDRESS`, `ZZPAY_INBOUND_GMAIL_APP_PASSWORD` | For email forwarding with no domain (a polled Gmail inbox) | Guide: [email-forwarding.md](email-forwarding.md). Needs the server to stay awake (see below). |
 | `ZZPAY_BREVO_API_KEY` + `ZZPAY_SMTP_FROM` | For the welcome email, the password-reset link, the Premium order confirmation and "email to accountant". **Use this on Render's free plan**, which blocks outgoing SMTP ports 25, 465 and 587. `ZZPAY_SMTP_FROM` must be a sender address verified in Brevo, e.g. `TradeTrack <you@gmail.com>` | |
 | `ZZPAY_SMTP_HOST` (+ `_PORT`, `_USER`, `_PASSWORD`, `_FROM`, `_TLS`) | Alternative to Brevo when the host allows SMTP | |
 | `ZZPAY_S3_ENDPOINT`, `_BUCKET`, `_ACCESS_KEY`, `_SECRET_KEY`, `_REGION` | Optional | Store originals in a private bucket instead of the database. |
@@ -91,5 +92,5 @@ upgrade buttons show the Stripe test card (4242 4242 4242 4242) so testers can p
 hides the note automatically.
 
 ## Email forwarding wording
-Until `ZZPAY_INBOUND_DOMAIN` and `ZZPAY_MAILGUN_SIGNING_KEY` are set, the Premium feature list and comparison table
+Until either `ZZPAY_INBOUND_DOMAIN` + `ZZPAY_MAILGUN_SIGNING_KEY` or `ZZPAY_INBOUND_GMAIL_ADDRESS` + `ZZPAY_INBOUND_GMAIL_APP_PASSWORD` are set, the Premium feature list and comparison table
 say "Email-forwarding receipt capture (coming soon)" and the how-it-works step does not mention forwarding.

@@ -1,7 +1,15 @@
-"""Inbound email (Mailgun "forward to URL" route). Provider -> server only; no login.
+"""Inbound email. Two ways in, one set of rules:
+
+* Mailgun "forward to URL" route (needs a domain): ``POST /api/inbound/mailgun`` below.
+* A polled Gmail inbox (no domain needed): ``app/inbox.py``.
+
+Both call ``process_message`` at the bottom of this file, so the plan check, duplicate detection,
+attachment validation, AI extraction and the owner's log behave identically.
+
+Mailgun route. Provider -> server only; no login.
 
 Trust model - the request is accepted only if ALL hold:
-1. ZZPAY_MAILGUN_SIGNING_KEY and ZZPAY_INBOUND_DOMAIN are configured (else 503);
+1. ZZPAY_MAILGUN_SIGNING_KEY and ZZPAY_INBOUND_DOMAIN are configured (else 503; Gmail polling alone does not enable this route);
 2. the HMAC-SHA256 signature over ``timestamp + token`` is valid (constant-time compare) - else 403;
 3. the timestamp is fresh (default +-5 minutes) - else 403;
 4. the token was not used before (replay) - else 403;
@@ -21,9 +29,10 @@ import hmac
 import logging
 import re
 import time
+from functools import partial
 from datetime import timedelta
 from html.parser import HTMLParser
-from typing import Annotated
+from typing import Annotated, Awaitable, Callable
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy import delete
@@ -109,7 +118,7 @@ def _recipient_alias(recipient: str) -> str | None:
 
 @router.post("/mailgun")
 async def mailgun_inbound(request: Request, session: SessionDep) -> dict:
-    if not settings.inbound_email_configured:
+    if not settings.inbound_mailgun_configured:
         raise _reject(503, "inbound_email_not_configured")
     length = request.headers.get("content-length")
     if length and length.isdigit() and int(length) > MAX_BODY_BYTES:
@@ -151,17 +160,61 @@ async def mailgun_inbound(request: Request, session: SessionDep) -> dict:
 
     uploads = [v for _, v in form.multi_items() if isinstance(v, UploadFile)]
     message_id = str(form.get("Message-Id") or form.get("message-id") or "").strip()
-    message_hash = _sha(message_id.lower()) if message_id else None
+    body = ""
+    if not uploads:
+        body = str(form.get("body-plain") or "").strip()
+        if not body and form.get("body-html"):
+            body = html_to_text(str(form.get("body-html"))).strip()
+    try:
+        return await process_message(
+            session,
+            user,
+            message_id=message_id,
+            attachments=[(up.filename, partial(up.read, settings.max_upload_bytes + 1)) for up in uploads],
+            body=body,
+        )
+    except Rejected as exc:
+        raise await _reject_keep(session, exc.code, exc.reason) from None
 
-    def log(status: InboundStatus, reason: str | None, attachments: int, ids: list[str]) -> InboundEvent:
-        ev = InboundEvent(user_id=user.id, status=status.value, reason=reason, attachments=attachments,
+
+# --------------------------------------------------------------------------- #
+# Shared by the Mailgun route and the Gmail poller
+# --------------------------------------------------------------------------- #
+Reader = Callable[[], Awaitable[bytes]]
+
+
+class Rejected(Exception):
+    """The message was refused (and logged for the owner). ``code`` is the HTTP status Mailgun should see."""
+
+    def __init__(self, code: int, reason: str) -> None:
+        super().__init__(reason)
+        self.code = code
+        self.reason = reason
+
+
+async def process_message(
+    session: AsyncSession,
+    user: User,
+    *,
+    message_id: str,
+    attachments: list[tuple[str | None, Reader]],
+    body: str,
+) -> dict:
+    """Turn one received email for ``user`` into receipts. ``attachments`` are (filename, async reader)
+    pairs so nothing is read from the provider before the plan and duplicate checks pass. ``body`` is only
+    used when there are no attachments. Raises ``Rejected`` for a refusal that has been logged."""
+    message_hash = _sha(message_id.lower()) if message_id else None
+    n_attachments = len(attachments)
+
+    def log(status: InboundStatus, reason: str | None, count: int, ids: list[str]) -> InboundEvent:
+        ev = InboundEvent(user_id=user.id, status=status.value, reason=reason, attachments=count,
                           receipt_ids=ids, message_hash=message_hash)
         session.add(ev)
         return ev
 
     if user.plan != "PREMIUM":
-        log(InboundStatus.REJECTED, "premium_required", len(uploads), [])
-        raise await _reject_keep(session, 406, "premium_required")
+        log(InboundStatus.REJECTED, "premium_required", n_attachments, [])
+        raise Rejected(406, "premium_required")
 
     if message_hash:
         seen = (await session.execute(
@@ -171,7 +224,7 @@ async def mailgun_inbound(request: Request, session: SessionDep) -> dict:
             )
         )).first()
         if seen:
-            log(InboundStatus.DUPLICATE, "message_already_processed", len(uploads), [])
+            log(InboundStatus.DUPLICATE, "message_already_processed", n_attachments, [])
             return {"status": "duplicate"}
 
     # --- run the same pipeline as uploads ----------------------------------- #
@@ -179,24 +232,21 @@ async def mailgun_inbound(request: Request, session: SessionDep) -> dict:
     counts = {"ok": 0, "duplicate": 0, "failed": 0, "not_configured": 0, "invalid": 0}
     reasons: list[str] = []
 
-    if uploads:
-        for up in uploads[:MAX_ATTACHMENTS]:
-            data = await up.read(settings.max_upload_bytes + 1)
+    if attachments:
+        for filename, read in attachments[:MAX_ATTACHMENTS]:
+            data = await read()
             try:
-                res = await pipeline.ingest_file(session, user, data, up.filename, ReceiptSource.EMAIL)
+                res = await pipeline.ingest_file(session, user, data, filename, ReceiptSource.EMAIL)
             except InvalidFile as exc:
                 counts["invalid"] += 1
                 reasons.append("attachment_too_large" if exc.status_code == 413 else "unsupported_attachment")
                 continue
             counts[res.outcome] += 1
             ids.append(res.receipt.id)
-        if len(uploads) > MAX_ATTACHMENTS:
+        if n_attachments > MAX_ATTACHMENTS:
             reasons.append("too_many_attachments")
     else:
-        body = str(form.get("body-plain") or "").strip()
-        if not body and form.get("body-html"):
-            body = html_to_text(str(form.get("body-html"))).strip()
-        body = re.sub(r"\n{3,}", "\n\n", body)
+        body = re.sub(r"\n{3,}", "\n\n", (body or "").strip())
         if len(body) < MIN_BODY_TEXT_CHARS:
             log(InboundStatus.REJECTED, "no_receipt_content", 0, [])
             return {"status": "rejected", "reason": "no_receipt_content"}
@@ -215,5 +265,5 @@ async def mailgun_inbound(request: Request, session: SessionDep) -> dict:
         reasons.append("file_already_received")
     else:
         status_ = InboundStatus.REJECTED
-    log(status_, ", ".join(dict.fromkeys(reasons)) or None, len(uploads), ids)
+    log(status_, ", ".join(dict.fromkeys(reasons)) or None, n_attachments, ids)
     return {"status": status_.value.lower(), "receipts": len(ids)}

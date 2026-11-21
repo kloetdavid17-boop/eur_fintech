@@ -72,6 +72,15 @@ class Settings(BaseSettings):
     inbound_domain: str = ""  # e.g. receipts.tradetrack.ca
     inbound_max_age_seconds: int = 300
 
+    # --- Inbound email without a domain: poll a Gmail inbox over IMAP ---------
+    # A dedicated Gmail account; users forward to <account>+<alias>@gmail.com (Gmail delivers every
+    # "+tag" address to the same inbox). The password is a Gmail *app password* (needs 2-step
+    # verification on that account), never the normal password.
+    inbound_gmail_address: str = ""
+    inbound_gmail_app_password: str = ""
+    inbound_imap_host: str = "imap.gmail.com"
+    inbound_poll_seconds: int = 60
+
     # --- Billing (Stripe). Demo mode is used unless secret key + price id are set
     stripe_secret_key: str = ""
     stripe_price_id: str = ""
@@ -126,8 +135,41 @@ class Settings(BaseSettings):
         return bool(self.brevo_api_key.strip() or self.smtp_host.strip())
 
     @property
-    def inbound_email_configured(self) -> bool:
+    def inbound_mailgun_configured(self) -> bool:
         return bool(self.mailgun_signing_key.strip() and self.inbound_domain.strip())
+
+    @property
+    def inbound_gmail_configured(self) -> bool:
+        addr = self.inbound_gmail_address.strip()
+        return bool("@" in addr and self.inbound_gmail_app_password.strip())
+
+    @property
+    def inbound_email_configured(self) -> bool:
+        return self.inbound_mailgun_configured or self.inbound_gmail_configured
+
+    @property
+    def inbound_mode(self) -> str | None:
+        """"mailgun" (own domain, webhook), "gmail" (IMAP polling) or None. Mailgun wins if both are set."""
+        if self.inbound_mailgun_configured:
+            return "mailgun"
+        return "gmail" if self.inbound_gmail_configured else None
+
+    @property
+    def inbound_address_domain(self) -> str | None:
+        if self.inbound_mode == "mailgun":
+            return self.inbound_domain.strip().lower()
+        if self.inbound_mode == "gmail":
+            return self.inbound_gmail_address.strip().lower().rsplit("@", 1)[1]
+        return None
+
+    def inbound_address_for(self, alias: str) -> str | None:
+        """The private address a user forwards receipts to, or None when nothing can receive them."""
+        if self.inbound_mode == "mailgun":
+            return f"{alias}@{self.inbound_domain.strip().lower()}"
+        if self.inbound_mode == "gmail":
+            local, domain = self.inbound_gmail_address.strip().lower().rsplit("@", 1)
+            return f"{local.split('+')[0]}+{alias}@{domain}"
+        return None
 
     @property
     def s3_configured(self) -> bool:

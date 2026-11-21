@@ -297,11 +297,7 @@ class RegisterOut(UserOut):
 
 
 def user_to_out(user: User) -> UserOut:
-    address = (
-        f"{user.forwarding_alias}@{settings.inbound_domain.strip().lower()}"
-        if settings.inbound_email_configured
-        else None
-    )
+    address = settings.inbound_address_for(user.forwarding_alias)
     return UserOut(
         id=user.id,
         email=user.email,

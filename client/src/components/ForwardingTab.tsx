@@ -91,6 +91,21 @@ export function ForwardingTab({ goTo }: { goTo: (t: "plan") => void }) {
         </Card>
       )}
 
+      {premium && configured && address && config.services.inbound_ok === false ? (
+        <Alert kind="warning" title="The receiving mailbox couldn't be reached at the last check">
+          Emails you forward right now may be delayed. TradeTrack keeps trying automatically, and nothing is lost
+          if the mailbox comes back.
+        </Alert>
+      ) : null}
+      {premium && configured && address && config.services.inbound_mode === "gmail" ? (
+        <Alert kind="info" title="How this address works">
+          TradeTrack checks the receiving mailbox about once a minute, so a forwarded receipt can take a minute or
+          two to appear. Forward emails one at a time: automatic forwarding rules in Gmail need a confirmation
+          code that TradeTrack can't pass on. Forwarded emails are removed from the receiving mailbox after they are
+          read.
+        </Alert>
+      ) : null}
+
       <Card className="p-4">
         <h3 className="font-semibold text-ink">How to use it</h3>
         <ol className="mt-2 list-decimal space-y-1.5 pl-5 text-sm text-slate-800">

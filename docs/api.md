@@ -37,6 +37,8 @@ Status codes the UI must handle: `401` (not signed in), `402` (plan limit / prem
   "services": {
     "ai_configured": true,
     "inbound_email_configured": false,
+    "inbound_mode": null,        // "mailgun" | "gmail" | null
+    "inbound_ok": null,          // gmail mode: did the last mailbox check work? null = not checked yet / n.a.
     "inbound_domain": null,
     "billing_mode": "demo",
     "smtp_configured": false,

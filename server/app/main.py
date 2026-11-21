@@ -4,13 +4,14 @@ On startup: ensure the tt_* tables exist (additive, never destructive), then opt
 data. Run with:  uvicorn app.main:app --reload --port 8000
 """
 
+import asyncio
 import logging
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from app import seed
+from app import inbox, seed
 from app.config import settings
 from app.database import ensure_schema
 from app.routers import billing, config, inbound, receipts, users
@@ -22,7 +23,14 @@ logging.basicConfig(level=logging.INFO)
 async def lifespan(app: FastAPI):
     await ensure_schema()
     await seed.run()  # no-op unless development or ZZPAY_SEED_DEMO=true
-    yield
+    poller = asyncio.create_task(inbox.run_forever()) if settings.inbound_mode == "gmail" else None
+    try:
+        yield
+    finally:
+        if poller:
+            poller.cancel()
+            with suppress(asyncio.CancelledError):
+                await poller
 
 
 app = FastAPI(title=settings.app_name, version="1.0.0", lifespan=lifespan)

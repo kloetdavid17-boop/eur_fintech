@@ -1,10 +1,45 @@
-# Email forwarding (Mailgun)
+# Email forwarding (Gmail inbox or Mailgun)
 
 Users forward a receipt email to their personal TradeTrack address. **Premium feature.** It only works once
 you configure Mailgun - until then `GET /api/config` reports `inbound_email_configured: false`, the UI shows no
 address (`forwarding_address` is `null`) and the endpoint answers `503`.
 
-## How it works
+There are two ways to receive the forwarded emails. They share all the rules below (plan check, duplicates,
+attachment validation, AI extraction, the owner's log); only how the email arrives differs.
+
+| | Gmail inbox (no domain, free) | Mailgun (needs your own domain) |
+|---|---|---|
+| Address users see | `inbox+<alias>@gmail.com` | `<alias>@receipts.yourdomain.com` |
+| How it arrives | TradeTrack checks the inbox about once a minute (IMAP) | Mailgun POSTs to `/api/inbound/mailgun` |
+| Needs | a Gmail account + app password; server kept awake | a domain, MX records, a Mailgun route |
+| Delay | up to about a minute | seconds |
+
+If both are configured, Mailgun is used.
+
+## Gmail inbox (no domain)
+1. Create a Gmail account used only for TradeTrack (for example `tradetrack.receipts@gmail.com`).
+2. Turn on **2-step verification** for it, then create an **App password** (Google Account > Security > App
+   passwords). Use that 16-character password, never the real one.
+3. In Render (backend service) set `ZZPAY_INBOUND_GMAIL_ADDRESS=<that address>` and
+   `ZZPAY_INBOUND_GMAIL_APP_PASSWORD=<app password>`, then redeploy. `GET /api/config` should show
+   `inbound_mode: "gmail"`; after a minute `inbound_ok` becomes `true` (or `false` if the login was refused).
+4. **Keep the backend awake.** Polling only happens while the server runs, and Render's free plan sleeps after
+   15 minutes without traffic. Ping `https://<backend>/api/health` every 5 minutes (UptimeRobot is free). One
+   always-on free service fits inside Render's 750 free hours a month. Emails that arrive while it sleeps wait
+   in the inbox and are picked up when it wakes.
+5. Make sure `ZZPAY_OPENAI_API_KEY` is set too.
+
+Behaviour: the alias in the recipient (`To`, `Delivered-To`, ...) selects the account; the sender never does.
+Mail without a known alias is ignored and costs no AI call. Handled messages are marked read and moved to the
+inbox's Trash. A message that fails three times in a row (for example a database error) is closed out so it
+cannot loop. Gmail's own "confirm forwarding" emails are ignored, which also means **automatic forwarding rules in
+Gmail cannot be set up** (the confirmation code never reaches the user): users forward emails one at a time.
+Inline images smaller than 30 KB (logos, tracking pixels) are not treated as receipts.
+
+Privacy: forwarded emails pass through this one mailbox, owned by whoever runs the site. Do not use a personal
+inbox. TradeTrack stores no sender, subject or body (only the minimal log row).
+
+## Mailgun (own domain)
 `alias@<ZZPAY_INBOUND_DOMAIN>` -> Mailgun receives it -> Mailgun POSTs it to `https://<backend>/api/inbound/mailgun`.
 Each account has a random alias (80 bits, e.g. `r3f9a...`), rotatable with `POST /api/me/forwarding-alias/rotate`
 (the old address stops working at once).
@@ -44,7 +79,9 @@ Mailgun treats `406` as "do not retry".
 - Mailgun's "Logs" and the route's webhook response codes show delivery problems.
 - Automated tests (`tests/test_inbound.py`) use a local signature with a test key: bad signature, stale timestamp,
   replay, unknown alias, free plan, duplicate message/file, bad and oversize attachments, body-only email, AI failure,
-  alias rotation. **A real Mailgun delivery has not been tested.**
+  alias rotation. **A real Mailgun delivery has not been tested.** The Gmail path (`tests/test_inbox.py`) is tested against a
+fake IMAP server and crafted messages; **a real Gmail login and delivery have not been tested** until the owner
+sets the two variables above and forwards a real email.
 
 ## Limits
 The replay/rate-limit state for tokens is in the database; the per-account rate limit (60/min) is per process.

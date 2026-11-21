@@ -101,6 +101,10 @@ export interface AppConfig {
     ai_configured: boolean;
     inbound_email_configured: boolean;
     inbound_domain: string | null;
+    /** "mailgun" (own domain), "gmail" (polled mailbox) or null. */
+    inbound_mode: "mailgun" | "gmail" | null;
+    /** Gmail mode: did the last mailbox check work? null = not checked yet / not applicable. */
+    inbound_ok: boolean | null;
     billing_mode: "stripe" | "demo";
     billing_test_mode: boolean;
     smtp_configured: boolean;

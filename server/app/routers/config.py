@@ -2,7 +2,7 @@
 
 from fastapi import APIRouter
 
-from app import plans
+from app import inbox, plans
 from app.config import settings
 from app.extraction import ALLOWED_MIME_TYPES
 from app.models import EXPENSE_CATEGORIES
@@ -33,7 +33,10 @@ async def get_config() -> dict:
         "services": {
             "ai_configured": settings.ai_configured,
             "inbound_email_configured": settings.inbound_email_configured,
-            "inbound_domain": settings.inbound_domain.strip().lower() if settings.inbound_email_configured else None,
+            "inbound_domain": settings.inbound_address_domain,
+            "inbound_mode": settings.inbound_mode,
+            # Gmail mode only: did the last mailbox check work? None = not checked yet / not applicable.
+            "inbound_ok": inbox.state.ok if settings.inbound_mode == "gmail" else None,
             "billing_mode": settings.billing_mode,
             "billing_test_mode": settings.billing_test_mode,
             "smtp_configured": settings.smtp_configured,
