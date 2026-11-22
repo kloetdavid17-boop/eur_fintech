@@ -2,7 +2,7 @@
 // the not-tax-advice note.
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { PiCrownSimple, PiList, PiX } from "react-icons/pi";
+import { PiCrownSimple, PiList, PiUserCircle, PiX } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Alert } from "./Alert";
 import { Button, buttonClasses } from "./Button";
@@ -55,9 +55,15 @@ export function Layout() {
 
   const account = loading ? null : user ? (
     <>
-      <span className="truncate px-1 text-sm text-slate-700" title={user.email}>
-        {user.first_name}
-      </span>
+      <Link
+        to="/dashboard?tab=account"
+        className="inline-flex min-h-10 max-w-[10rem] items-center gap-1.5 rounded-lg px-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+        title={`${user.email} · Profile and privacy`}
+        aria-label={`${user.first_name}: profile and privacy`}
+      >
+        <PiUserCircle className="h-5 w-5 shrink-0" aria-hidden="true" />
+        <span className="truncate">{user.first_name}</span>
+      </Link>
       {user.plan !== "PREMIUM" ? (
         <Link to="/dashboard?tab=plan" className={buttonClasses("accent", "sm")}>
           <PiCrownSimple aria-hidden="true" /> Upgrade
