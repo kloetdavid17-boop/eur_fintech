@@ -80,11 +80,24 @@ at it, or merge it into `dev`.
 The app never modifies or drops older tables, so the original ZZPay data in the same database stays
 intact. The last working ZZPay version is commit `f07486f`; redeploying that commit brings it back.
 
-## Free-plan sleep (Render)
-Render's free web services sleep after about 15 minutes without traffic, and waking takes up to roughly a minute. The
-frontend retries the settings request for about a minute and shows "The server is waking up" instead of an error, but
-the first visitor still waits. Two fixes: (1) ping `https://<backend>/api/health` every 5 minutes with a free uptime
-monitor (e.g. UptimeRobot), or (2) move the backend to a paid instance (also removes the outgoing-SMTP block).
+## Free-plan sleep (Render) and keep-alive
+Render's free web services sleep after about 15 minutes without inbound traffic, and waking takes up to roughly a minute.
+The frontend retries the settings request for about a minute and shows "The server is waking up" instead of an error, so
+a cold start never looks like a crash. To avoid cold starts we use a free uptime monitor:
+
+- **What:** an UptimeRobot (free plan, 50 monitors, 5-minute interval) HTTP monitor on
+  `https://<backend>/api/health`. Any request resets Render's 15-minute timer. The monitor also emails the owner if the
+  backend goes down.
+- **Which URL:** the backend only. The static site never sleeps, and `/robots.txt` does not wake a sleeping service
+  (Render answers it itself).
+- **Why `/api/health` doesn't touch the database:** the Neon free plan has 100 compute-hours a month and scales to zero
+  after 5 idle minutes (not configurable). Keeping the database awake around the clock would use the allowance up. The
+  first database query after a quiet spell is about a second slower, which is acceptable.
+- **Render hours:** the free plan gives 750 instance hours per workspace per month. One always-on backend uses about 720
+  to 744, so `eur-fintech` must be the only free Web Service in the workspace. Static sites do not count.
+- **Before a demo:** open the site about 10 minutes early and run one upload as a Free user.
+
+The alternative is a paid instance, which also removes the outgoing-SMTP block. Not used here (no budget).
 
 ## Test mode notice
 When `ZZPAY_STRIPE_SECRET_KEY` starts with `sk_test_`, `/api/config` reports `services.billing_test_mode: true` and the
