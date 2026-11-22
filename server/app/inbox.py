@@ -15,6 +15,11 @@ Privacy: forwarded emails pass through this one mailbox. After a message is hand
 mailbox's Trash (or at least marked read if that fails); no sender, subject or body is stored by
 TradeTrack (only a minimal log row, as with Mailgun).
 
+Safe on a personal mailbox: TradeTrack only ever looks at the recipient headers of recent unread mail. A
+message is downloaded, handled and trashed only if it is addressed to ``<inbox>+<alias>@gmail.com`` AND that
+alias belongs to a TradeTrack account. Every other message is left exactly as it is: not downloaded, not
+marked read, not moved. (Even so, a dedicated mailbox is the cleaner choice.)
+
 Honesty: ``state.ok`` records whether the last check worked and is reported by ``/api/config`` so the
 dashboard can say so when the mailbox cannot be reached. Nothing here runs unless
 ZZPAY_INBOUND_GMAIL_ADDRESS and ZZPAY_INBOUND_GMAIL_APP_PASSWORD are both set. The server must be awake to
@@ -26,6 +31,7 @@ import imaplib
 import logging
 import re
 from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from email import policy
 from email.message import EmailMessage
 from email.parser import BytesParser
@@ -43,6 +49,9 @@ logger = logging.getLogger("tradetrack.inbox")
 MAX_MESSAGES_PER_POLL = 20
 MAX_MESSAGE_BYTES = 25 * 1024 * 1024  # Gmail's own limit for incoming mail
 MAX_ATTEMPTS = 3
+SEARCH_DAYS = 3  # only unread mail from the last few days is considered
+MAX_HEADER_CHECKS = 200
+HEADER_FIELDS = "(BODY.PEEK[HEADER.FIELDS (TO CC DELIVERED-TO X-ORIGINAL-TO ENVELOPE-TO)])"
 SMALL_INLINE_BYTES = 30 * 1024  # logos and tracking pixels in HTML mail are not receipts
 RECIPIENT_HEADERS = ("Delivered-To", "X-Original-To", "Envelope-To", "To", "Cc")
 IMAGE_OR_PDF = ("application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic")
@@ -56,6 +65,7 @@ class InboxState:
 
 state = InboxState()
 _attempts: dict[bytes, int] = {}
+_skip: set[bytes] = set()  # mail that is not for TradeTrack: never downloaded again and never touched
 
 
 # --------------------------------------------------------------------------- #
@@ -159,13 +169,25 @@ def _connect() -> imaplib.IMAP4_SSL:
 
 
 def _fetch_batch() -> list[tuple[bytes, bytes]]:
-    """Unread messages as (uid, raw bytes). Leaves them unread: they are only closed out after handling."""
+    """Unread mail addressed to a ``+alias`` of this inbox, as (uid, raw bytes). Everything else is skipped
+    after reading only its recipient headers. Messages stay unread until they have been handled."""
+    if len(_skip) > 5000:
+        _skip.clear()
     conn = _connect()
     try:
-        typ, data = conn.uid("SEARCH", None, "UNSEEN")
-        uids = (data[0] or b"").split()[:MAX_MESSAGES_PER_POLL] if typ == "OK" else []
+        since = (datetime.now(timezone.utc) - timedelta(days=SEARCH_DAYS)).strftime("%d-%b-%Y")
+        typ, data = conn.uid("SEARCH", None, "UNSEEN", "SINCE", since)
+        uids = (data[0] or b"").split() if typ == "OK" else []
+        uids = [u for u in uids if u not in _skip][-MAX_HEADER_CHECKS:]
         out: list[tuple[bytes, bytes]] = []
         for uid in uids:
+            if len(out) >= MAX_MESSAGES_PER_POLL:
+                break
+            typ, parts = conn.uid("FETCH", uid, HEADER_FIELDS)
+            head = parts[0][1] if typ == "OK" and parts and isinstance(parts[0], tuple) else b""
+            if recipient_alias(BytesParser(policy=policy.default).parsebytes(head)) is None:
+                _skip.add(uid)  # not addressed to a TradeTrack alias: leave it alone
+                continue
             typ, parts = conn.uid("FETCH", uid, "(RFC822.SIZE)")
             size = re.search(rb"RFC822\.SIZE (\d+)", b" ".join(p if isinstance(p, bytes) else p[0] for p in parts or []))
             if size and int(size.group(1)) > MAX_MESSAGE_BYTES:
@@ -219,7 +241,10 @@ async def poll_once(session_factory=None) -> int:
                 await session.commit()
             logger.info("inbound mail handled: %s", outcome)
             _attempts.pop(uid, None)
-            done.append(uid)
+            if outcome.startswith("ignored"):
+                _skip.add(uid)  # unknown alias or a Gmail notice: not ours, leave it exactly as it is
+            else:
+                done.append(uid)
         except Exception as exc:
             _attempts[uid] = _attempts.get(uid, 0) + 1
             logger.error("inbound mail failed (%s), attempt %s", type(exc).__name__, _attempts[uid])

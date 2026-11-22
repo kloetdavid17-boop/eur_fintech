@@ -18,6 +18,7 @@ def _gmail(monkeypatch):
     monkeypatch.setattr(settings, "inbound_gmail_address", GMAIL)
     monkeypatch.setattr(settings, "inbound_gmail_app_password", "abcd efgh ijkl mnop")
     inbox._attempts.clear()
+    inbox._skip.clear()
     inbox.state.ok = inbox.state.error = None
 
 
@@ -172,6 +173,9 @@ class FakeIMAP:
         if cmd == "FETCH":
             uid, what = args
             raw = FakeIMAP.inbox[uid]
+            if "HEADER.FIELDS" in what:
+                head = raw.split(b"\n\n", 1)[0] + b"\n\n"
+                return "OK", [(b"%s (BODY[HEADER.FIELDS] {%d}" % (uid, len(head)), head), b")"]
             if "SIZE" in what:
                 return "OK", [b"%s (RFC822.SIZE %d)" % (uid, len(raw))]
             return "OK", [(b"%s (BODY[] {%d}" % (uid, len(raw)), raw), b")"]
@@ -192,18 +196,32 @@ def imap(monkeypatch):
     return FakeIMAP
 
 
-async def test_poll_creates_receipts_and_closes_out_messages(client, premium, db_maker, imap):
+async def test_poll_creates_receipts_and_closes_out_only_its_own_messages(client, premium, db_maker, imap):
     to = f"tradetrack.receipts+{premium['forwarding_alias']}@gmail.com"
     imap.inbox = {
         b"1": mail(to, attachments=[("a.png", png_bytes(20), "image/png")], message_id="<1@x>"),
-        b"2": mail("tradetrack.receipts@gmail.com", message_id="<2@x>"),  # no alias: ignored
+        b"2": mail("tradetrack.receipts@gmail.com", message_id="<2@x>"),  # no alias: not ours
     }
     await inbox.check_once(db_maker)
     assert inbox.state.ok is True
     assert (await client.get("/api/receipts")).json()["total"] == 1
-    cmds = [e for e in imap.log if e[0] in ("STORE", "COPY", "expunge")]
-    assert ("COPY", b"1", '"[Gmail]/Trash"') in cmds and ("COPY", b"2", '"[Gmail]/Trash"') in cmds and ("expunge",) in cmds
+    touched = {e[1] for e in imap.log if e[0] in ("STORE", "COPY")}
+    assert touched == {b"1"} and ("COPY", b"1", '"[Gmail]/Trash"') in imap.log and ("expunge",) in imap.log
     assert (await client.get("/api/config")).json()["services"]["inbound_ok"] is True
+
+
+async def test_other_mail_in_a_personal_inbox_is_never_downloaded_or_touched(client, premium, db_maker, imap, ai):
+    imap.inbox = {
+        b"1": mail("tradetrack.receipts@gmail.com", message_id="<1@x>"),
+        b"2": mail("someone.else@gmail.com", message_id="<2@x>"),
+        b"3": mail("tradetrack.receipts+rdeadbeefdeadbeef@gmail.com", message_id="<3@x>"),  # unknown alias
+    }
+    await inbox.check_once(db_maker)
+    await inbox.check_once(db_maker)  # second poll must not re-download them either
+    assert not [e for e in imap.log if e[0] in ("STORE", "COPY") or e == ("expunge",)]
+    bodies = [e for e in imap.log if e[0] == "FETCH" and e[2] == "(BODY.PEEK[])"]
+    assert [e[1] for e in bodies] == [b"3"]  # only the look-alike tag was read once, then remembered as ignored
+    assert ai.calls == 0
 
 
 async def test_login_failure_is_reported_not_raised(client, db_maker, imap):

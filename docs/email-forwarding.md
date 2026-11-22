@@ -36,8 +36,15 @@ cannot loop. Gmail's own "confirm forwarding" emails are ignored, which also mea
 Gmail cannot be set up** (the confirmation code never reaches the user): users forward emails one at a time.
 Inline images smaller than 30 KB (logos, tracking pixels) are not treated as receipts.
 
-Privacy: forwarded emails pass through this one mailbox, owned by whoever runs the site. Do not use a personal
-inbox. TradeTrack stores no sender, subject or body (only the minimal log row).
+Privacy: forwarded emails pass through this one mailbox, owned by whoever runs the site. A dedicated inbox is the
+cleaner choice. TradeTrack stores no sender, subject or body (only the minimal log row).
+
+Using an existing (personal) Gmail instead works as a fallback, and the poller is safe for it: each check lists only
+unread mail from the last 3 days and reads just the recipient headers. A message is downloaded, handled and moved to
+Trash **only if** it is addressed to `<inbox>+<alias>@gmail.com` and the alias belongs to a TradeTrack account. All
+other mail (and mail to a `+tag` that is not a TradeTrack alias) is never downloaded, marked read or moved. The app
+password still gives the server IMAP access to that whole mailbox, so keep it in the Render environment only, and
+revoke it (Google Account, Security, App passwords) when the demo is over.
 
 ## Mailgun (own domain)
 `alias@<ZZPAY_INBOUND_DOMAIN>` -> Mailgun receives it -> Mailgun POSTs it to `https://<backend>/api/inbound/mailgun`.
