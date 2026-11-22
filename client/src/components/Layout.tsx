@@ -2,10 +2,10 @@
 // the not-tax-advice note.
 import { useEffect, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
-import { PiList, PiX } from "react-icons/pi";
+import { PiCrownSimple, PiList, PiX } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Alert } from "./Alert";
-import { Button } from "./Button";
+import { Button, buttonClasses } from "./Button";
 import { Logo } from "./Logo";
 
 export function Layout() {
@@ -58,6 +58,11 @@ export function Layout() {
       <span className="truncate px-1 text-sm text-slate-700" title={user.email}>
         {user.first_name}
       </span>
+      {user.plan !== "PREMIUM" ? (
+        <Link to="/dashboard?tab=plan" className={buttonClasses("accent", "sm")}>
+          <PiCrownSimple aria-hidden="true" /> Upgrade
+        </Link>
+      ) : null}
       <Button variant="secondary" size="sm" onClick={signOut}>
         Sign out
       </Button>

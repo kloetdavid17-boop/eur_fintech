@@ -1,6 +1,7 @@
 // Page 3: account and management dashboard. Sections are tabs, kept in the URL (?tab=).
 import { useRef } from "react";
 import { useSearchParams } from "react-router-dom";
+import { PiLockSimple } from "react-icons/pi";
 import { useAuth } from "../auth";
 import { Card } from "../components/Card";
 import { ExportsTab } from "../components/ExportsTab";
@@ -16,8 +17,8 @@ import { useUsage } from "../hooks/useUsage";
 export const TABS = [
   { id: "receipts", label: "Receipts" },
   { id: "plan", label: "Usage and plan" },
-  { id: "forwarding", label: "Email forwarding" },
-  { id: "exports", label: "Exports" },
+  { id: "forwarding", label: "Email forwarding", premium: true },
+  { id: "exports", label: "Exports", premium: true },
   { id: "account", label: "Profile and privacy" },
 ] as const;
 export type TabId = (typeof TABS)[number]["id"];
@@ -90,6 +91,12 @@ export function Dashboard() {
             }`}
           >
             {t.label}
+            {"premium" in t && user.plan !== "PREMIUM" ? (
+              <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-amber-800" title="Premium feature">
+                <PiLockSimple aria-hidden="true" />
+                <span className="sr-only">(Premium)</span>
+              </span>
+            ) : null}
           </button>
         ))}
       </div>
