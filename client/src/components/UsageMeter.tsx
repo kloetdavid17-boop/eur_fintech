@@ -1,3 +1,4 @@
+import { Link } from "react-router-dom";
 import type { Usage } from "../api";
 import { formatDate } from "../lib/format";
 
@@ -6,6 +7,12 @@ export function UsageMeter({ usage, compact = false }: { usage: Usage; compact?:
   const unlimited = usage.limit === null;
   const pct = unlimited ? 0 : Math.min(100, Math.round((usage.saved_this_period / usage.limit!) * 100));
   const full = !unlimited && usage.saved_this_period >= usage.limit!;
+  const oneLeft = !unlimited && !full && usage.limit! - usage.saved_this_period === 1;
+  const upgrade = (
+    <Link to="/dashboard?tab=plan" className="font-semibold text-brand underline">
+      See Premium
+    </Link>
+  );
 
   return (
     <div>
@@ -37,7 +44,12 @@ export function UsageMeter({ usage, compact = false }: { usage: Usage; compact?:
       {full ? (
         <p className="mt-2 text-sm font-medium text-red-800">
           You've used this month's free allowance. You can still upload and review receipts, but you'll
-          need Premium (or next month) to save more.
+          need Premium (or next month) to save more. {upgrade}
+        </p>
+      ) : null}
+      {oneLeft ? (
+        <p className="mt-2 text-sm font-medium text-amber-900">
+          1 free receipt left this month. Premium has no monthly limit. {upgrade}
         </p>
       ) : null}
     </div>

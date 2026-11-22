@@ -12,6 +12,7 @@ import { ReceiptsTab } from "../components/ReceiptsTab";
 import { UploadPanel } from "../components/UploadPanel";
 import { UsageMeter } from "../components/UsageMeter";
 import { PremiumBadge } from "../components/StatusBadge";
+import { PremiumStrip } from "../components/PremiumStrip";
 import { useUsage } from "../hooks/useUsage";
 
 export const TABS = [
@@ -71,6 +72,8 @@ export function Dashboard() {
           <UsageMeter usage={usage} compact />
         </Card>
       ) : null}
+
+      <PremiumStrip />
 
       <div role="tablist" aria-label="Dashboard sections" className="-mx-4 flex gap-1 overflow-x-auto border-b border-slate-200 px-4">
         {TABS.map((t, i) => (

@@ -26,6 +26,7 @@ import {
   type Receipt,
   type ReceiptPatch,
 } from "../api";
+import { useAuth } from "../auth";
 import { Alert } from "../components/Alert";
 import { Button, buttonClasses } from "../components/Button";
 import { Card } from "../components/Card";
@@ -49,6 +50,7 @@ interface LimitInfo {
 
 export function ReceiptDetail() {
   const { id = "" } = useParams();
+  const { user } = useAuth();
   const navigate = useNavigate();
   const location = useLocation();
   const queryClient = useQueryClient();
@@ -63,6 +65,7 @@ export function ReceiptDetail() {
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState<Busy>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  const [justSaved, setJustSaved] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [limit, setLimit] = useState<LimitInfo | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
@@ -82,6 +85,7 @@ export function ReceiptDetail() {
 
   function clearFeedback() {
     setSuccess(null);
+    setJustSaved(false);
     setProblem(null);
     setLimit(null);
     setFieldErrors({});
@@ -118,6 +122,7 @@ export function ReceiptDetail() {
       store(current);
       setEditing(false);
       setSuccess("Receipt saved. It now counts toward this month's allowance and appears in your dashboard.");
+      setJustSaved(true);
     } catch (err) {
       const info = apiErrorInfo(err);
       if (info.status === 402 && info.code === "free_limit_reached") {
@@ -260,6 +265,14 @@ export function ReceiptDetail() {
             </Link>
           }>
             {success}
+          </Alert>
+        ) : null}
+        {justSaved && user?.plan !== "PREMIUM" ? (
+          <Alert kind="info" title="Keeping receipts for your accountant?">
+            Premium exports your saved receipts by month and builds one ZIP with a summary, a CSV and the originals.{" "}
+            <Link to="/dashboard?tab=plan" className="font-semibold underline">
+              See Premium
+            </Link>
           </Alert>
         ) : null}
         {problem ? <Alert kind="error">{problem}</Alert> : null}

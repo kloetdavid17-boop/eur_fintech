@@ -60,3 +60,15 @@ Signed-in Free users go straight on: Stripe Checkout when billing is in Stripe m
 upgrade. A signed-out visitor sees the sign-up form first (the page says so) and then continues into the upgrade.
 Premium users see a link to their dashboard instead. The server decides the mode (`/api/config`), and the plan only
 changes on the server (demo endpoint, or the verified Stripe webhook).
+
+## Where Free users see Premium
+Premium features are shown to Free accounts in several places, all UI only (the server still enforces everything):
+- **Header Upgrade button** on every page (desktop and phone menu), linking to the dashboard's plan tab.
+- **Lock icons** on the Premium-only dashboard tabs (Email forwarding, Exports), plus the lock panels inside them and
+  beside the date/amount filters.
+- **"What Premium adds" card** (`PremiumStrip`) on the dashboard: locked Export CSV, Summary by province and
+  Accountant package buttons. They are never wired to the API; they open a short explanation with the upgrade link.
+  Email forwarding is described as "coming soon" until `/api/config` reports inbound email as configured.
+- **Usage meter nudge** ("1 free receipt left this month") at 4 of 5, and an upgrade link when the allowance is used up.
+- **After saving a receipt** a Free user sees a one-line note about exports for their accountant.
+Wording never says an expense is deductible or tax recoverable.
