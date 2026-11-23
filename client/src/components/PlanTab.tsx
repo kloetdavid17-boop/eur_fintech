@@ -196,10 +196,6 @@ export function PlanTab({ goTo: _goTo }: { goTo: (t: "plan") => void }) {
           Upgrades on this site are simulated to show how Premium behaves. No card is needed and no money
           changes hands.
         </Alert>
-      ) : mode === "stripe" ? (
-        <Alert kind="info">
-          Payments are handled by Stripe in CAD. TradeTrack never sees or stores your card details.
-        </Alert>
       ) : null}
 
       <section aria-labelledby="plans-h" className="space-y-3">
